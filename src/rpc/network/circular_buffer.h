@@ -22,9 +22,9 @@ class CircularBuffer;
  *
  * CircularBufferProducer can push() on CircularBuffer. 
  * Note:
- * 1. NOT thread-safe.
- * 2. Only one instance can be created at a time (single-producer).
- * 3. Before push(), user have to check if queue is filled, by fill().
+ * (1) NOT thread-safe.
+ * (2) Only one instance can be created at a time (single-producer).
+ * (3) Before push(), user have to check if queue is filled, by fill().
  */ 
 template <typename T>
 class CircularBufferProducer {
