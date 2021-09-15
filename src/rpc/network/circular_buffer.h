@@ -28,15 +28,14 @@ class CircularBuffer;
  */ 
 template <typename T>
 class CircularBufferProducer {
-
  public:
-
   /*!
    * \brief CircularBufferProducer constructor
    * \param buffer shared pointer for CircularBuffer.
    */
   explicit CircularBufferProducer(std::shared_ptr<CircularBuffer<T>> buffer) {
-    while (buffer->has_producer.exchange(true, std::memory_order_acquire));
+    while (buffer->has_producer.exchange(true, std::memory_order_acquire)) {
+    }
     buf = buffer;
   }
 
@@ -81,7 +80,6 @@ class CircularBufferProducer {
   }
 
  private:
-
   /*!
    * \brief shared pointer for CircularBuffer.
    */
@@ -93,22 +91,21 @@ class CircularBufferProducer {
  *
  * CircularBufferConsumer can pop() and front() on CircularBuffer. 
  * Note:
- * 1. NOT thread-safe.
- * 2. Only one instance can be created at a time (single-consumer).
- * 3. Before pop(), user have to check if queue is empty, by empty().
- * 4. If queue is empty, front() returns NULL.
+ * (1) NOT thread-safe.
+ * (2) Only one instance can be created at a time (single-consumer).
+ * (3) Before pop(), user have to check if queue is empty, by empty().
+ * (4) If queue is empty, front() returns NULL.
  */ 
 template <typename T>
 class CircularBufferConsumer {
-
  public:
-
   /*!
    * \brief CircularBufferConsumer constructor
    * \param buffer shared pointer for CircularBuffer.
    */
   explicit CircularBufferConsumer(std::shared_ptr<CircularBuffer<T>> buffer) {
-    while (buffer->has_consumer.exchange(true, std::memory_order_acquire));
+    while (buffer->has_consumer.exchange(true, std::memory_order_acquire)) {
+    }
     buf = buffer;
   }
 
@@ -174,7 +171,6 @@ class CircularBufferConsumer {
   }
 
  private:
-
   /*!
    * \brief shared pointer for CircularBuffer.
    */
@@ -189,13 +185,11 @@ class CircularBufferConsumer {
  */ 
 template <typename T>
 class CircularBuffer {
-
  public:
-
   friend CircularBufferConsumer<T>;
   friend CircularBufferProducer<T>;
 
-  CircularBuffer(int64_t queue_size) :
+  explicit CircularBuffer(int64_t queue_size) :
     size(queue_size+1),
     data(queue_size+1),
     head(0),
@@ -205,7 +199,6 @@ class CircularBuffer {
   }
 
  private:
-
   /*!
    * \brief Queue size
    */
@@ -237,7 +230,7 @@ class CircularBuffer {
   std::atomic_bool has_consumer;
 };
 
-}
-}
+}  // namespace network
+}  // namespace dgl
 
-#endif
+#endif  // DGL_RPC_NETWORK_CIRCULAR_BUFFER_H_

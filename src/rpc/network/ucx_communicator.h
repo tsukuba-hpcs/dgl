@@ -6,9 +6,13 @@
 #ifndef DGL_RPC_NETWORK_UCX_COMMUNICATOR_H_
 #define DGL_RPC_NETWORK_UCX_COMMUNICATOR_H_
 
+#include <ucp/api/ucp.h>
+
 #include <string>
 #include <thread>
-#include <ucp/api/ucp.h>
+#include <unordered_map>
+#include <memory>
+#include <vector>
 
 #include "common.h"
 #include "communicator.h"
@@ -32,7 +36,7 @@ struct UCXStreamBuffer {
   char* data_buffer;
   int64_t data_offset;
 
-  UCXStreamBuffer() : 
+  UCXStreamBuffer() :
     data_size(0),
     size_offset(0),
     data_buffer(NULL),
@@ -95,7 +99,7 @@ class UCXSender : public Sender {
   /*!
    * \brief ucp endpoint for each connection of receiver
    */ 
-  std::unordered_map<int /* receiver ID */,ucp_ep_h> eps_;
+  std::unordered_map<int /* receiver ID */, ucp_ep_h> eps_;
 
   /*!
    * \brief receivers' address
@@ -189,7 +193,6 @@ class UCXReceiver : public Receiver {
   void Finalize();
 
  private:
-
   /*!
    * \brief Queue size
    */ 
@@ -197,7 +200,7 @@ class UCXReceiver : public Receiver {
   /*!
    * \brief ucp endpoint for each connection of receiver
    */ 
-  std::vector<int /* sender ID */,ucp_ep_h> eps_;
+  std::vector<int /* sender ID */, ucp_ep_h> eps_;
 
   /*!
    * \brief ucp context
@@ -246,7 +249,8 @@ class UCXReceiver : public Receiver {
    * \param data data pointer
    * 
    */
-  static std::vector<Message> RecvMsgLoop(UCXStreamBuffer *buf, size_t length, ucs_status_ptr_t data);
+  static std::vector<Message>
+    RecvMsgLoop(UCXStreamBuffer *buf, size_t length, ucs_status_ptr_t data);
 
   /*!
    * \brief Recv-loop to run ucp_worker_progress
@@ -264,11 +268,9 @@ class UCXReceiver : public Receiver {
    *  this is called when client creates endpoint for this receiver.
    */
   static void ConnHandlerCallback(ucp_conn_request_h conn_request, void *arg);
-
-  
 };
 
-}
-}
+}  // namespace network
+}  // namespace dgl
 
-#endif
+#endif  // DGL_RPC_NETWORK_UCX_COMMUNICATOR_H_
