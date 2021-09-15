@@ -124,12 +124,12 @@ STATUS UCXSender::Send(Message msg, int recv_id) {
     return QUEUE_CLOSE;
   }
   CHECK_NOTNULL(data_req);
-  if (prog_producer_->fill()) {
+  if (prog_producer_->filled()) {
     LOG(FATAL) << "progress queue is filled";
   }
   prog_producer_->push(std::move(size_req));
 
-  if (prog_producer_->fill()) {
+  if (prog_producer_->filled()) {
     LOG(FATAL) << "progress queue is filled";
   }
   prog_producer_->push(std::move(data_req));
@@ -138,7 +138,7 @@ STATUS UCXSender::Send(Message msg, int recv_id) {
 
 void UCXSender::Finalize() {
   // Send Finish Signal
-  if (prog_producer_->fill()) {
+  if (prog_producer_->filled()) {
     LOG(FATAL) << "progress queue is filled";
   }
   prog_producer_->push(NULL);

@@ -24,7 +24,7 @@ class CircularBuffer;
  * Note:
  * (1) NOT thread-safe.
  * (2) Only one instance can be created at a time (single-producer).
- * (3) Before push(), user have to check if queue is filled, by fill().
+ * (3) Before push(), user have to check if queue is filled, by filled().
  */ 
 template <typename T>
 class CircularBufferProducer {
@@ -50,7 +50,7 @@ class CircularBufferProducer {
    * \brief Check if queue is filled.
    * \return If queue is filled, returns true.
    */
-  bool fill() {
+  bool filled() {
     return size()+1 == buf->size;
   }
 
