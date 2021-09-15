@@ -43,7 +43,7 @@ class CircularBufferProducer {
    * \brief CircularBufferProducer deconstructor
    */
   ~CircularBufferProducer() {
-    buf->has_producer.store(false);
+    buf->has_producer.store(false, std::memory_order_release);
   }
 
   /*!
@@ -60,7 +60,7 @@ class CircularBufferProducer {
    */
   int64_t size() {
     int64_t head, tail;
-    head = buf->head.load();
+    head = buf->head.load(std::memory_order_acquire);
     tail = buf->tail.load();
     if (tail >= head) {
       return tail-head;
@@ -76,7 +76,7 @@ class CircularBufferProducer {
     int64_t tail;
     tail = buf->tail.load();
     buf->data[tail] = std::move(item);
-    buf->tail.store((tail+1)%buf->size);
+    buf->tail.store((tail+1)%buf->size, std::memory_order_release);
   }
 
  private:
@@ -113,7 +113,7 @@ class CircularBufferConsumer {
    * \brief CircularBufferConsumer deconstructor
    */
   ~CircularBufferConsumer() {
-    buf->has_consumer.store(false);
+    buf->has_consumer.store(false, std::memory_order_release);
   }
 
   /*!
@@ -131,7 +131,7 @@ class CircularBufferConsumer {
   int64_t size() {
     int64_t head, tail;
     head = buf->head.load();
-    tail = buf->tail.load();
+    tail = buf->tail.load(std::memory_order_acquire);
     if (tail >= head) {
       return tail-head;
     }
@@ -148,7 +148,7 @@ class CircularBufferConsumer {
   T* front() {
     int64_t head, tail;
     head = buf->head.load();
-    tail = buf->tail.load();
+    tail = buf->tail.load(std::memory_order_acquire);
     if (head == tail) {
       // empty
       return NULL;
@@ -166,7 +166,7 @@ class CircularBufferConsumer {
     int64_t head;
     head = buf->head.load();
     T ret = std::move(buf->data[head]);
-    buf->head.store((head+1)%buf->size);
+    buf->head.store((head+1)%buf->size, std::memory_order_release);
     return ret;
   }
 
