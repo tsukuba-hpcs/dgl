@@ -122,7 +122,7 @@ class UCXSender : public Sender {
   std::shared_ptr<CircularBuffer<ucs_status_ptr_t>> prog_queue_;
 
   /*!
-   * \brief producer for progress queue
+   * \brief producer for progress queue. prog_producer_ is not thread-safe.
    */
   std::unique_ptr<CircularBufferProducer<ucs_status_ptr_t>> prog_producer_;
 
@@ -167,7 +167,7 @@ class UCXReceiver : public Receiver {
    *
    * (1) The Recv() API is blocking, which will not 
    *     return until getting data from message queue.
-   * (2) The Recv() API is thread-safe.
+   * (2) The Recv() API is not thread-safe.
    * (3) Memory allocated by communicator but will not own it after the function returns.
    */
   STATUS Recv(Message* msg, int* send_id);
@@ -180,7 +180,7 @@ class UCXReceiver : public Receiver {
    *
    * (1) The RecvFrom() API is blocking, which will not 
    *     return until getting data from message queue.
-   * (2) The RecvFrom() API is thread-safe.
+   * (2) The RecvFrom() API is not thread-safe.
    * (3) Memory allocated by communicator but will not own it after the function returns.
    */
   STATUS RecvFrom(Message* msg, int send_id);
@@ -228,12 +228,12 @@ class UCXReceiver : public Receiver {
   std::vector<std::shared_ptr<CircularBuffer<Message>>> recv_queues_;
 
   /*!
-   * \brief consumer for notify queue
+   * \brief consumer for notify queue. notify_consumer_ is not thread-safe.
    */
   std::unique_ptr<CircularBufferConsumer<int>> notify_consumer_;
 
   /*!
-   * \brief consumer for receive queues for each sender.
+   * \brief consumer for receive queues for each sender. recv_consumer_ is not thread-safe.
    */
   std::vector<std::unique_ptr<CircularBufferConsumer<Message>>> recv_consumer_;
 
