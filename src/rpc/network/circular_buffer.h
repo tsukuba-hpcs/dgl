@@ -189,9 +189,14 @@ class CircularBuffer {
   friend CircularBufferConsumer<T>;
   friend CircularBufferProducer<T>;
 
-  explicit CircularBuffer(int64_t queue_size) :
-    size(queue_size+1),
-    data(queue_size+1),
+  /*!
+   * \brief CircularBuffer constructor
+   * \param queue_size size (bytes) of queue. 
+   * Note that, the queue_size parameter is optional.
+   */
+  explicit CircularBuffer(int64_t queue_size = sizeof(T)*1024) :
+    size((queue_size)/sizeof(T)+1),
+    data((queue_size)/sizeof(T)+1),
     head(0),
     tail(0),
     has_producer(false),
