@@ -296,7 +296,7 @@ std::vector<Message> RecvMsgLoop(UCXStreamBuffer *buf, size_t length, ucs_status
     if (buf->size_offset < sizeof(int64_t)) {
       // If size_buffer will be not filled in this iter, finish.
       if (buf->size_offset + length < sizeof(int64_t)) {
-        memcpy(
+        std::memcpy(
           buf->size_buffer + buf->size_offset,
           data, length);
         buf->size_offset += length;
@@ -304,7 +304,7 @@ std::vector<Message> RecvMsgLoop(UCXStreamBuffer *buf, size_t length, ucs_status
       }
       // size_buffer will be filled.
       int64_t gap = sizeof(int64_t) - buf->size_offset;
-      memcpy(
+      std::memcpy(
         buf->size_buffer + buf->size_offset,
         data, gap);
       // size_offset == sizeof(int64_t)
@@ -313,13 +313,13 @@ std::vector<Message> RecvMsgLoop(UCXStreamBuffer *buf, size_t length, ucs_status
       length = length - gap;
       data = data + gap;
       // We got data_size from size_buffer
-      memcpy(&buf->data_size, buf->size_buffer, sizeof(int64_t));
+      std::memcpy(&buf->data_size, buf->size_buffer, sizeof(int64_t));
       // Allocate data_buffer
       buf->data_buffer = reinterpret_cast<char *>(malloc(buf->data_size));
     }
     // If data_buffer will be not filled in this iter, finish.
     if (buf->data_offset + length < buf->data_size) {
-      memcpy(
+      std::memcpy(
         buf->data_buffer + buf->data_offset,
         data, length);
       buf->data_offset += length;
@@ -327,7 +327,7 @@ std::vector<Message> RecvMsgLoop(UCXStreamBuffer *buf, size_t length, ucs_status
     }
     // data_buffer will be filled.
     int64_t gap = buf->data_size - buf->data_offset;
-    memcpy(
+    std::memcpy(
       buf->data_buffer + buf->data_offset,
       data, gap);
     // data_offset == data_size
