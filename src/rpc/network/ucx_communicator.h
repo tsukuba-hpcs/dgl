@@ -7,6 +7,7 @@
 #define DGL_RPC_NETWORK_UCX_COMMUNICATOR_H_
 
 #include <ucp/api/ucp.h>
+#include <dmlc/concurrentqueue.h>
 
 #include <string>
 #include <thread>
@@ -16,7 +17,6 @@
 
 #include "common.h"
 #include "communicator.h"
-#include "circular_buffer.h"
 
 namespace dgl {
 namespace network {
@@ -119,12 +119,7 @@ class UCXSender : public Sender {
   /*!
    * \brief progress queue
    */
-  std::shared_ptr<CircularBuffer<ucs_status_ptr_t>> prog_queue_;
-
-  /*!
-   * \brief producer for progress queue. prog_producer_ is not thread-safe.
-   */
-  std::unique_ptr<CircularBufferProducer<ucs_status_ptr_t>> prog_producer_;
+  dmlc::moodycamel::ConcurrentQueue<ucs_status_ptr_t> prog_queue_;
 
   /*!
    * \brief progress thread
@@ -167,7 +162,7 @@ class UCXReceiver : public Receiver {
    *
    * (1) The Recv() API is blocking, which will not 
    *     return until getting data from message queue.
-   * (2) The Recv() API is not thread-safe.
+   * (2) The Recv() API is thread-safe.
    * (3) Memory allocated by communicator but will not own it after the function returns.
    */
   STATUS Recv(Message* msg, int* send_id);
@@ -180,7 +175,7 @@ class UCXReceiver : public Receiver {
    *
    * (1) The RecvFrom() API is blocking, which will not 
    *     return until getting data from message queue.
-   * (2) The RecvFrom() API is not thread-safe.
+   * (2) The RecvFrom() API is thread-safe.
    * (3) Memory allocated by communicator but will not own it after the function returns.
    */
   STATUS RecvFrom(Message* msg, int send_id);
@@ -220,22 +215,12 @@ class UCXReceiver : public Receiver {
   /*!
    * \brief notify queue for Recv()
    */
-  std::shared_ptr<CircularBuffer<int>> notify_queue_;
+  dmlc::moodycamel::ConcurrentQueue<int> notify_queue_;
 
   /*!
    * \brief receive queue for each sender.
    */
-  std::vector<std::shared_ptr<CircularBuffer<Message>>> recv_queues_;
-
-  /*!
-   * \brief consumer for notify queue. notify_consumer_ is not thread-safe.
-   */
-  std::unique_ptr<CircularBufferConsumer<int>> notify_consumer_;
-
-  /*!
-   * \brief consumer for receive queues for each sender. recv_consumer_ is not thread-safe.
-   */
-  std::vector<std::unique_ptr<CircularBufferConsumer<Message>>> recv_consumer_;
+  std::vector<dmlc::moodycamel::ConcurrentQueue<Message>> recv_queues_;
 
   /*!
    * \brief progress thread

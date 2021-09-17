@@ -18,9 +18,7 @@ namespace network {
 /////////////////////////////////////// UCXSender ///////////////////////////////////////////
 
 UCXSender::UCXSender(int64_t queue_size) :
-  Sender(queue_size),
-  prog_queue_(std::make_shared<CircularBuffer<ucs_status_ptr_t>>(queue_size)),
-  prog_producer_(std::make_unique<CircularBufferProducer<ucs_status_ptr_t>>(prog_queue_)) {
+  Sender(queue_size) {
 }
 
 void UCXSender::AddReceiver(const char *addr, int recv_id) {
@@ -124,24 +122,14 @@ STATUS UCXSender::Send(Message msg, int recv_id) {
     return QUEUE_CLOSE;
   }
   CHECK_NOTNULL(data_req);
-  if (prog_producer_->filled()) {
-    LOG(FATAL) << "progress queue is filled";
-  }
-  prog_producer_->push(std::move(size_req));
-
-  if (prog_producer_->filled()) {
-    LOG(FATAL) << "progress queue is filled";
-  }
-  prog_producer_->push(std::move(data_req));
+  prog_queue_.enqueue(std::move(size_req));
+  prog_queue_.enqueue(std::move(data_req));
 }
 
 
 void UCXSender::Finalize() {
   // Send Finish Signal
-  if (prog_producer_->filled()) {
-    LOG(FATAL) << "progress queue is filled";
-  }
-  prog_producer_->push(NULL);
+  prog_queue_.enqueue(NULL);
   // join prog_thread_
   prog_thread_->join();
   // Close endpoints
@@ -155,14 +143,13 @@ void UCXSender::Finalize() {
 void UCXSender::SendLoop(UCXSender *self) {
   CHECK_NOTNULL(self);
   ucs_status_t status;
-  CircularBufferConsumer<ucs_status_ptr_t> consumer(self->prog_queue_);
+  ucs_status_ptr_t stat;
   while (true) {
     ucp_worker_progress(self->worker_);
     {
-      if (consumer.empty()) {
+      if (!self->prog_queue_.try_dequeue(stat)) {
         continue;
       }
-      ucs_status_ptr_t stat = *consumer.front();
       if (stat == NULL) {
         std::cout << "Finish Signal is received";
         return;
@@ -176,7 +163,6 @@ void UCXSender::SendLoop(UCXSender *self) {
         ucs_status_string(status);
       }
       ucp_request_free(stat);
-      consumer.pop();
     }
   }
 }
@@ -185,9 +171,7 @@ void UCXSender::SendLoop(UCXSender *self) {
 
 UCXReceiver::UCXReceiver(int64_t queue_size) :
   Receiver(queue_size),
-  queue_size(queue_size),
-  notify_queue_(std::make_shared<CircularBuffer<int>>(queue_size)),
-  notify_consumer_(std::make_unique<CircularBufferConsumer<int>>(notify_queue_)) {
+  queue_size(queue_size) {
 }
 
 bool UCXReceiver::Wait(const char* addr, int num_sender) {
@@ -273,13 +257,8 @@ bool UCXReceiver::Wait(const char* addr, int num_sender) {
   }
   // Close listener
   ucp_listener_destroy(listener_);
-  // Init receive queues and consumers
-  recv_queues_.assign(num_sender, std::make_shared<CircularBuffer<Message>>(queue_size));
-  recv_consumer_.clear();
-  for (int id=0; id < num_sender; id++) {
-    recv_consumer_.emplace_back(
-      std::make_unique<CircularBufferConsumer<int>>(recv_queues_[id]));
-  }
+  // Init receive queues
+  recv_queues_.resize(num_sender);
   // Fork progress thread
   prog_thread_ = std::make_shared<std::thread>(RecvLoop, this);
   return true;
@@ -369,11 +348,6 @@ std::vector<Message> RecvMsgLoop(UCXStreamBuffer *buf, size_t length, ucs_status
 void UCXReceiver::RecvLoop(UCXReceiver *self) {
   std::vector<UCXStreamBuffer> streambuf(
     self->eps_.size(), UCXStreamBuffer());
-  std::vector<CircularBufferProducer<Message>> producers;
-  for (int id=0; id < self->eps_.size(); id++) {
-    producers.emplace_back(self->recv_queues_[id]);
-  }
-  CircularBufferProducer<int> notify(self->notify_queue_);
   size_t length;
   ucs_status_ptr_t stat;
   while (true) {
@@ -390,10 +364,9 @@ void UCXReceiver::RecvLoop(UCXReceiver *self) {
       std::vector<Message> msgs = RecvMsgLoop(&streambuf[id], length, stat);
       ucp_stream_data_release(self->eps_[id], stat);
       if (!msgs.empty()) {
-        for (auto &msg : msgs) {
-          producers[id].push(std::move(msg));
-        }
-        notify.push(id);
+        self->recv_queues_[id].enqueue_bulk(
+          std::make_move_iterator(msgs.begin()), msgs.size());
+        self->notify_queue_.enqueue(id);
       }
     }
   }
@@ -401,24 +374,19 @@ void UCXReceiver::RecvLoop(UCXReceiver *self) {
 
 STATUS UCXReceiver::Recv(Message* msg, int* send_id) {
   while (true) {
-    while (notify_consumer_->empty()) {
+    while (!notify_queue_.try_dequeue(*send_id)) {
     }
-    int id = notify_consumer_->pop();
-    if (recv_consumer_[id]->empty()) {
+    if (!recv_queues_[*send_id].try_dequeue(*msg)) {
       continue;
     }
-    *send_id = id;
-    break;
+    LOG(INFO) << "id=" << *send_id << " message received";
+    return REMOVE_SUCCESS;
   }
-  LOG(INFO) << "id=" << *send_id << " message received";
-  *msg = recv_consumer_[*send_id]->pop();
-  return REMOVE_SUCCESS;
 }
 
 STATUS UCXReceiver::RecvFrom(Message* msg, int send_id) {
-  while (recv_consumer_[send_id]->empty()) {
+  while (!recv_queues_[send_id].try_dequeue(*msg)) {
   }
-  *msg = recv_consumer_[send_id]->pop();
   return REMOVE_SUCCESS;
 }
 
