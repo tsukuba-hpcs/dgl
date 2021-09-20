@@ -14,6 +14,7 @@
 #include <unordered_map>
 #include <memory>
 #include <vector>
+#include <atomic>
 
 #include "common.h"
 #include "communicator.h"
@@ -96,6 +97,11 @@ class UCXSender : public Sender {
   inline std::string Type() const { return std::string("ucx"); }
 
  private:
+  /*!
+   * \brief shutdown flag
+   */
+  std::atomic_bool shutdown_flag;
+
   /*!
    * \brief ucp endpoint for each connection of receiver
    */ 
@@ -189,9 +195,10 @@ class UCXReceiver : public Receiver {
 
  private:
   /*!
-   * \brief Queue size
-   */ 
-  int64_t queue_size;
+   * \brief shutdown flag
+   */
+  std::atomic_bool shutdown_flag;
+
   /*!
    * \brief ucp endpoint for each connection of receiver
    */ 

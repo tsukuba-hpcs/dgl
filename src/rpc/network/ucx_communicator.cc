@@ -18,7 +18,8 @@ namespace network {
 /////////////////////////////////////// UCXSender ///////////////////////////////////////////
 
 UCXSender::UCXSender(int64_t queue_size) :
-  Sender(queue_size) {
+  Sender(queue_size),
+  shutdown_flag(false) {
 }
 
 void UCXSender::AddReceiver(const char *addr, int recv_id) {
@@ -128,8 +129,8 @@ STATUS UCXSender::Send(Message msg, int recv_id) {
 
 
 void UCXSender::Finalize() {
-  // Send Finish Signal
-  prog_queue_.enqueue(NULL);
+  // Shutdown
+  shutdown_flag.store(true);
   // join prog_thread_
   prog_thread_->join();
   // Close endpoints
@@ -144,14 +145,14 @@ void UCXSender::SendLoop(UCXSender *self) {
   CHECK_NOTNULL(self);
   ucs_status_t status;
   ucs_status_ptr_t stat;
-  while (true) {
+  while (!self->shutdown_flag.load()) {
     ucp_worker_progress(self->worker_);
     {
       if (!self->prog_queue_.try_dequeue(stat)) {
         continue;
       }
       if (stat == NULL) {
-        std::cout << "Finish Signal is received";
+        LOG(FATAL) << "sendloop: cannot send NULL data";
         return;
       }
       status = ucp_request_check_status(stat);
@@ -171,7 +172,7 @@ void UCXSender::SendLoop(UCXSender *self) {
 
 UCXReceiver::UCXReceiver(int64_t queue_size) :
   Receiver(queue_size),
-  queue_size(queue_size) {
+  shutdown_flag(false) {
 }
 
 bool UCXReceiver::Wait(const char* addr, int num_sender) {
@@ -350,7 +351,7 @@ void UCXReceiver::RecvLoop(UCXReceiver *self) {
     self->eps_.size(), UCXStreamBuffer());
   size_t length;
   ucs_status_ptr_t stat;
-  while (true) {
+  while (!self->shutdown_flag.load()) {
     for (int id=0; id < self->eps_.size(); id++) {
       stat = ucp_stream_recv_data_nb(self->eps_[id], &length);
       if (stat == NULL) {
@@ -388,6 +389,19 @@ STATUS UCXReceiver::RecvFrom(Message* msg, int send_id) {
   while (!recv_queues_[send_id].try_dequeue(*msg)) {
   }
   return REMOVE_SUCCESS;
+}
+
+void UCXReceiver::Finalize() {
+  // Shutdown
+  shutdown_flag.store(true);
+  // join prog_thread_
+  prog_thread_->join();
+  // Close endpoints
+  for (auto &ep : eps_) {
+    ucp_ep_close_nb(ep.second, UCP_EP_CLOSE_MODE_FORCE);
+  }
+  ucp_worker_destroy(worker_);
+  ucp_cleanup(context_);
 }
 
 }  // namespace network
