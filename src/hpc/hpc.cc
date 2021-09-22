@@ -26,13 +26,6 @@ using namespace dgl::runtime;
 
 //////////////////////////// C APIs ////////////////////////////
 
-//////////////////////////// Callback ////////////////////////////
-
-static void server_conn_handle_cb(ucp_conn_request_h conn_request, void *arg) {
-  Context* ctx = reinterpret_cast<Context *>(arg);
-  LOG(INFO) << "rank=" << ctx->rank << ": server_conn_handle_cb is called";
-}
-
 //////////////////////////// Context ////////////////////////////
 
 DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCCreateContext")
@@ -86,6 +79,13 @@ DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCContextGetSize")
   const ContextRef ctx = args[0];
   *rv = ctx->size;
 });
+
+//////////////////////////// Manager ////////////////////////////
+
+static void server_conn_handle_cb(ucp_conn_request_h conn_request, void *arg) {
+  Context* ctx = reinterpret_cast<Context *>(arg);
+  LOG(INFO) << "rank=" << ctx->rank << ": server_conn_handle_cb is called";
+}
 
 static inline void create_listener(const ContextRef &ctx, ucp_listener_h *ucp_listener) {
   ucs_status_t status;
@@ -157,7 +157,7 @@ static inline void spawn_worker(MPI_Comm *comm, int32_t num_workers,
     MPI_COMM_SELF, comm, MPI_ERRCODES_IGNORE);
 }
 
-DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCContextLaunchWorker")
+DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCManagerLaunchWorker")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
   ucp_listener_h ucp_listener;
   ContextRef ctx = args[0];

@@ -46,7 +46,7 @@ class ManagerContext:
   def launchWorker(self, num_workers: int=1, py: str = "python", worker: str = "worker.py", *args: str):
     assert not self.launched, "cannot launch worker twice."
     self.launched = True
-    _CAPI_HPCContextLaunchWorker(self.context, num_workers, py, worker, *args)
+    _CAPI_HPCManagerLaunchWorker(self.context, num_workers, py, worker, *args)
 
 class WorkerContext:
   """
