@@ -7,6 +7,8 @@
 #ifndef DGL_HPC_HPC_H_
 #define DGL_HPC_HPC_H_
 
+#include <ucp/api/ucp.h>
+
 #include <dgl/runtime/object.h>
 #include <cstdint>
 
@@ -16,6 +18,8 @@ namespace hpc {
 struct Context : public runtime::Object {
   int32_t rank;
   int32_t size;
+  ucp_context_h ucp_context;
+  ucp_worker_h ucp_worker;
 
   static constexpr const char* _type_key = "hpc.Context";
   DGL_DECLARE_OBJECT_TYPE_INFO(Context, runtime::Object);

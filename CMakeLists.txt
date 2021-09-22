@@ -185,8 +185,12 @@ file(GLOB_RECURSE DGL_SRC_2
 )
 
 if(USE_HPC)
-  message(STATUS "Build with MPI.")
+  message(STATUS "Build with MPI and UCX.")
   list(APPEND DGL_SRC ${DGL_SRC_2})
+  find_package(PkgConfig)
+  pkg_check_modules(UCX REQUIRED ucx)
+  include_directories(${UCX_INCLUDE_DIRS})
+  list(APPEND DGL_LINKER_LIBS ${UCX_LIBRARIES})
   include(FindMPI)
   if(MPI_FOUND)
     include_directories(${MPI_CXX_INCLUDE_PATH})
