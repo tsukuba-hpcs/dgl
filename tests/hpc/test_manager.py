@@ -5,3 +5,4 @@ if __name__ == "__main__":
   print('mcontext.rank', mcontext.rank)
   print('mcontext.size', mcontext.size)
   mcontext.launchWorker(1, "python", "tests/hpc/test_worker.py")
+  mcontext.serve()

@@ -48,6 +48,10 @@ class ManagerContext:
     self.launched = True
     _CAPI_HPCManagerLaunchWorker(self.context, num_workers, py, worker, *args)
 
+  def serve(self):
+    assert self.launched, "must launch worker."
+    _CAPI_HPCManagerServe(self.context)
+
 class WorkerContext:
   """
   DGL's HPC WorkerContext.

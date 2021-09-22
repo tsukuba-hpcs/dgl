@@ -165,7 +165,6 @@ static inline void bcast_manager_context(ContextRef ctx) {
 
 DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCManagerLaunchWorker")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
-  ucp_listener_h ucp_listener;
   ContextRef ctx = args[0];
   int32_t num_workers = args[1];
   std::vector<std::string> worker_args;
@@ -173,7 +172,17 @@ DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCManagerLaunchWorker")
     const std::string arg = args[i];
     worker_args.push_back(arg);
   }
+  spawn_worker(&ctx->inter_comm, num_workers, worker_args);
+  ctx->remote_rank = -1;
+  ctx->remote_size = num_workers;
+  bcast_manager_context(ctx);
+});
+
+DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCManagerServe")
+.set_body([] (DGLArgs args, DGLRetValue* rv) {
+  ucp_listener_h ucp_listener;
   struct sockaddr_in sock;
+  ContextRef ctx = args[0];
   std::vector<struct sockaddr_in> socks(ctx->size);
   create_listener(ctx, &ucp_listener);
   get_sockaddr(&sock, ucp_listener);
@@ -184,10 +193,6 @@ DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCManagerLaunchWorker")
     << ":" << htons(sock.sin_port) << " ....";
   }
   gather_sockaddr(&socks[0], sock);
-  spawn_worker(&ctx->inter_comm, num_workers, worker_args);
-  ctx->remote_rank = -1;
-  ctx->remote_size = num_workers;
-  bcast_manager_context(ctx);
   ucp_listener_destroy(ucp_listener);
 });
 
