@@ -41,4 +41,7 @@ class ManagerContext:
   def size(self) -> int:
     return self.context.size
 
+  def launchWorker(self):
+    _CAPI_HPCContextLaunchWorker(self.context)
+
 _init_api("dgl.hpc.context")
