@@ -22,7 +22,7 @@ struct Context : public runtime::Object {
   ucp_context_h ucp_context;
   ucp_worker_h ucp_worker;
   MPI_Comm inter_comm;
-  int32_t remote_rank; // for worker only
+  int32_t remote_rank;  // for worker only
   int32_t remote_size;
 
   static constexpr const char* _type_key = "hpc.Context";
