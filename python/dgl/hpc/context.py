@@ -33,6 +33,7 @@ class ManagerContext:
   """
   def __init__(self):
     self.context = Context()
+    self.launched = False
 
   @property
   def rank(self) -> int:
@@ -43,6 +44,8 @@ class ManagerContext:
     return self.context.size
 
   def launchWorker(self, num_workers: int=1, py: str = "python", worker: str = "worker.py", *args: str):
+    assert not self.launched, "cannot launch worker twice."
+    self.launched = True
     _CAPI_HPCContextLaunchWorker(self.context, num_workers, py, worker, *args)
 
 class WorkerContext:
