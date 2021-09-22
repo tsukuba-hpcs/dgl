@@ -34,6 +34,7 @@ dgl_option(BUILD_CPP_TEST "Build cpp unittest executables" OFF)
 dgl_option(LIBCXX_ENABLE_PARALLEL_ALGORITHMS "Enable the parallel algorithms library. This requires the PSTL to be available." OFF)
 dgl_option(USE_S3 "Build with S3 support" OFF)
 dgl_option(USE_HDFS "Build with HDFS support" OFF) # Set env HADOOP_HDFS_HOME if needed
+dgl_option(USE_HPC "Build with HPC support" ON)
 
 # Set debug compile option for gdb, only happens when -DCMAKE_BUILD_TYPE=DEBUG
 if (NOT MSVC)
@@ -178,6 +179,24 @@ if(USE_CUDA)
 
   list(APPEND DGL_LINKER_LIBS ${NCCL_LIBRARY})
 endif(USE_CUDA)
+
+file(GLOB_RECURSE DGL_SRC_2
+  src/hpc/*.cc
+)
+
+if(USE_HPC)
+  message(STATUS "Build with MPI.")
+  list(APPEND DGL_SRC ${DGL_SRC_2})
+  include(FindMPI)
+  if(MPI_FOUND)
+    include_directories(${MPI_CXX_INCLUDE_PATH})
+    list(APPEND DGL_LINKER_LIBS ${MPI_CXX_LIBRARIES})
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${MPI_C_COMPILE_FLAGS}")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${MPI_CXX_COMPILE_FLAGS}")
+  else(MPI_FOUND)
+    message(FATAL_ERROR "MPI is not found")
+  endif(MPI_FOUND)
+endif(USE_HPC)
 
 if(USE_CUDA)
   cuda_add_library(dgl SHARED ${DGL_SRC})
