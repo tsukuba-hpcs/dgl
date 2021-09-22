@@ -13,6 +13,7 @@
 #include <mpi.h>
 #include <memory>
 #include <vector>
+#include <string>
 
 #include "../c_api_common.h"
 
@@ -130,10 +131,41 @@ static inline void gather_sockaddr(struct sockaddr_in *socks, const struct socka
   MPI_Allgather(&sock, sizeof(sock), MPI_BYTE, socks, sizeof(sock), MPI_BYTE, MPI_COMM_WORLD);
 }
 
+static inline void spawn_worker(MPI_Comm *comm, int32_t num_workers,
+                                const std::vector<std::string> &worker_args) {
+  if (num_workers < 1) {
+    LOG(FATAL) << "num_workers = " << num_workers << " is invalid";
+  }
+  MPI_Info info;
+  char hostname[30];
+  int hostname_len;
+  std::vector<std::vector<char>> args_buffer;
+  for (size_t i=1; i < worker_args.size(); i++) {
+    args_buffer.emplace_back(worker_args[i].begin(), worker_args[i].end());
+    args_buffer.back().push_back('\0');
+  }
+  std::vector<char *> args;
+  for (std::vector<char> &buf : args_buffer) {
+    args.push_back(&buf[0]);
+  }
+  args.push_back(NULL);
+  MPI_Get_processor_name(hostname, &hostname_len);
+  LOG(INFO) << "host=" << hostname << " spawn " << num_workers << " workers";
+  MPI_Info_create(&info);
+  MPI_Info_set(info, "host", hostname);
+  MPI_Comm_spawn(worker_args[0].c_str(), &args[0], num_workers, info, 0, MPI_COMM_SELF, comm, MPI_ERRCODES_IGNORE);
+}
+
 DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCContextLaunchWorker")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
   ucp_listener_h ucp_listener;
   ContextRef ctx = args[0];
+  int32_t num_workers = args[1];
+  std::vector<std::string> worker_args;
+  for(int i = 2; i < args.num_args; i++) {
+    const std::string arg = args[i];
+    worker_args.push_back(arg);
+  }
   struct sockaddr_in sock;
   std::vector<struct sockaddr_in> socks(ctx->size);
   create_listener(ctx, &ucp_listener);
@@ -145,6 +177,7 @@ DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCContextLaunchWorker")
     << ":" << htons(sock.sin_port) << " ....";
   }
   gather_sockaddr(&socks[0], sock);
+  spawn_worker(&ctx->inter_comm, num_workers, worker_args);
   ucp_listener_destroy(ucp_listener);
 });
 

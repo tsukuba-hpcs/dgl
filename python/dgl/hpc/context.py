@@ -2,8 +2,9 @@
 
 from .._ffi.object import register_object, ObjectBase
 from .._ffi.function import _init_api
+from typing import Tuple
 
-__all__ = ['ManagerContext']
+__all__ = ['ManagerContext', 'WorkerContext']
 
 @register_object('hpc.Context')
 class Context(ObjectBase):
@@ -41,7 +42,22 @@ class ManagerContext:
   def size(self) -> int:
     return self.context.size
 
-  def launchWorker(self):
-    _CAPI_HPCContextLaunchWorker(self.context)
+  def launchWorker(self, num_workers: int=1, py: str = "python", worker: str = "worker.py", *args: str):
+    _CAPI_HPCContextLaunchWorker(self.context, num_workers, py, worker, *args)
+
+class WorkerContext:
+  """
+  DGL's HPC WorkerContext.
+  """
+  def __init__(self):
+    self.context = Context()
+
+  @property
+  def rank(self) -> int:
+    return self.context.rank
+
+  @property
+  def size(self) -> int:
+    return self.context.size
 
 _init_api("dgl.hpc.context")
