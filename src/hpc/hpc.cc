@@ -86,11 +86,8 @@ DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCContextGetSize")
   *rv = ctx->size;
 });
 
-DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCContextLaunchWorker")
-.set_body([] (DGLArgs args, DGLRetValue* rv) {
+static inline void create_listener(const ContextRef &ctx, ucp_listener_h *ucp_listener) {
   ucs_status_t status;
-  ucp_listener_h ucp_listener;
-  ContextRef ctx = args[0];
   struct sockaddr_in listen_addr = {
     .sin_family = AF_INET,
     .sin_port = htons(0),
@@ -110,10 +107,14 @@ DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCContextLaunchWorker")
       .arg = ctx.sptr().get(),
     }
   };
-  status = ucp_listener_create(ctx->ucp_worker, &params, &ucp_listener);
+  status = ucp_listener_create(ctx->ucp_worker, &params, ucp_listener);
   if (status != UCS_OK) {
     LOG(FATAL) << "ucp_listener_create failed";
   }
+}
+
+static inline void get_sockaddr(struct sockaddr_in *sock, const ucp_listener_h &ucp_listener) {
+  ucs_status_t status;
   ucp_listener_attr_t attr = {
     .field_mask = UCP_LISTENER_ATTR_FIELD_SOCKADDR,
   };
@@ -121,18 +122,29 @@ DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCContextLaunchWorker")
   if (status != UCS_OK) {
     LOG(FATAL) << "ucp_listener_query failed";
   }
+  std::memcpy(sock, &attr.sockaddr, sizeof(sockaddr_in));
+}
+
+static inline void gather_sockaddr(struct sockaddr_in *socks, const struct sockaddr_in &sock) {
+  MPI_Barrier(MPI_COMM_WORLD);
+  MPI_Allgather(&sock, sizeof(sock), MPI_BYTE, socks, sizeof(sock), MPI_BYTE, MPI_COMM_WORLD);
+}
+
+DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCContextLaunchWorker")
+.set_body([] (DGLArgs args, DGLRetValue* rv) {
+  ucp_listener_h ucp_listener;
+  ContextRef ctx = args[0];
   struct sockaddr_in sock;
-  std::memcpy(&sock, &attr.sockaddr, sizeof(sockaddr_in));
+  std::vector<struct sockaddr_in> socks(ctx->size);
+  create_listener(ctx, &ucp_listener);
+  get_sockaddr(&sock, ucp_listener);
   {
     char buffer[100];
     LOG(INFO) << "rank=" << ctx->rank << " listen "
     << inet_ntop(AF_INET, &sock.sin_addr, reinterpret_cast<char *>(&buffer), 100)
     << ":" << htons(sock.sin_port) << " ....";
   }
-  MPI_Barrier(MPI_COMM_WORLD);
-  std::vector<struct sockaddr_in> socks(ctx->size);
-  MPI_Allgather(&sock, sizeof(sock), MPI_BYTE, &socks[0], sizeof(sock), MPI_BYTE,
-    MPI_COMM_WORLD);
+  gather_sockaddr(&socks[0], sock);
   ucp_listener_destroy(ucp_listener);
 });
 
