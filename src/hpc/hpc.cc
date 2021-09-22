@@ -12,6 +12,7 @@
 
 #include <mpi.h>
 #include <memory>
+#include <vector>
 
 #include "../c_api_common.h"
 
@@ -128,6 +129,10 @@ DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCContextLaunchWorker")
     << inet_ntop(AF_INET, &sock.sin_addr, reinterpret_cast<char *>(&buffer), 100)
     << ":" << htons(sock.sin_port) << " ....";
   }
+  MPI_Barrier(MPI_COMM_WORLD);
+  std::vector<struct sockaddr_in> socks(ctx->size);
+  MPI_Allgather(&sock, sizeof(sock), MPI_BYTE, &socks[0], sizeof(sock), MPI_BYTE,
+    MPI_COMM_WORLD);
   ucp_listener_destroy(ucp_listener);
 });
 
