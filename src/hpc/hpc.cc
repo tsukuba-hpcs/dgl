@@ -26,10 +26,9 @@ using namespace dgl::runtime;
 
 //////////////////////////// Callback ////////////////////////////
 
-static void server_conn_handle_cb(ucp_conn_request_h conn_request, void *arg)
-{
-  Context* ctx = (Context *)arg;
-  //LOG(INFO) << "rank=" << ctx->rank << ": server_conn_handle_cb is called";
+static void server_conn_handle_cb(ucp_conn_request_h conn_request, void *arg) {
+  Context* ctx = reinterpret_cast<Context *>(arg);
+  LOG(INFO) << "rank=" << ctx->rank << ": server_conn_handle_cb is called";
 }
 
 //////////////////////////// Context ////////////////////////////
@@ -118,7 +117,7 @@ DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCContextLaunchWorker")
     .field_mask = UCP_LISTENER_ATTR_FIELD_SOCKADDR,
   };
   status = ucp_listener_query(ucp_listener, &attr);
-  if(status != UCS_OK) {
+  if (status != UCS_OK) {
     LOG(FATAL) << "ucp_listener_query failed";
   }
   struct sockaddr_in sock;
@@ -126,7 +125,7 @@ DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCContextLaunchWorker")
   {
     char buffer[100];
     LOG(INFO) << "rank=" << ctx->rank << " listen "
-    << inet_ntop(AF_INET, &sock.sin_addr, (char *)&buffer, 100)
+    << inet_ntop(AF_INET, &sock.sin_addr, reinterpret_cast<char *>(&buffer), 100)
     << ":" << htons(sock.sin_port) << " ....";
   }
   ucp_listener_destroy(ucp_listener);
