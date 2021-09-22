@@ -153,7 +153,8 @@ static inline void spawn_worker(MPI_Comm *comm, int32_t num_workers,
   LOG(INFO) << "host=" << hostname << " spawn " << num_workers << " workers";
   MPI_Info_create(&info);
   MPI_Info_set(info, "host", hostname);
-  MPI_Comm_spawn(worker_args[0].c_str(), &args[0], num_workers, info, 0, MPI_COMM_SELF, comm, MPI_ERRCODES_IGNORE);
+  MPI_Comm_spawn(worker_args[0].c_str(), &args[0], num_workers, info, 0,
+    MPI_COMM_SELF, comm, MPI_ERRCODES_IGNORE);
 }
 
 DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCContextLaunchWorker")
@@ -162,7 +163,7 @@ DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCContextLaunchWorker")
   ContextRef ctx = args[0];
   int32_t num_workers = args[1];
   std::vector<std::string> worker_args;
-  for(int i = 2; i < args.num_args; i++) {
+  for (int i = 2; i < args.num_args; i++) {
     const std::string arg = args[i];
     worker_args.push_back(arg);
   }
