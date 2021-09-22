@@ -157,6 +157,12 @@ static inline void spawn_worker(MPI_Comm *comm, int32_t num_workers,
     MPI_COMM_SELF, comm, MPI_ERRCODES_IGNORE);
 }
 
+static inline void bcast_manager_context(ContextRef ctx) {
+  MPI_Barrier(ctx->inter_comm);
+  MPI_Bcast(&ctx->rank, 1, MPI_INT32_T, MPI_ROOT, ctx->inter_comm);
+  MPI_Bcast(&ctx->size, 1, MPI_INT32_T, MPI_ROOT, ctx->inter_comm);
+}
+
 DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCManagerLaunchWorker")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
   ucp_listener_h ucp_listener;
@@ -179,7 +185,27 @@ DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCManagerLaunchWorker")
   }
   gather_sockaddr(&socks[0], sock);
   spawn_worker(&ctx->inter_comm, num_workers, worker_args);
+  ctx->remote_rank = -1;
+  ctx->remote_size = num_workers;
+  bcast_manager_context(ctx);
   ucp_listener_destroy(ucp_listener);
+});
+
+//////////////////////////// Worker ////////////////////////////
+
+static inline void recv_manager_context(ContextRef ctx) {
+  MPI_Barrier(ctx->inter_comm);
+  MPI_Bcast(&ctx->remote_rank, 1, MPI_INT32_T, 0, ctx->inter_comm);
+  MPI_Bcast(&ctx->remote_size, 1, MPI_INT32_T, 0, ctx->inter_comm);
+  LOG(INFO) << "remote_rank=" << ctx->remote_rank << " "
+            << "remote_size=" << ctx->remote_size;
+}
+
+DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCWorkerConnect")
+.set_body([] (DGLArgs args, DGLRetValue* rv) {
+  ContextRef ctx = args[0];
+  MPI_Comm_get_parent(&ctx->inter_comm);
+  recv_manager_context(ctx);
 });
 
 }  // namespace hpc

@@ -54,6 +54,7 @@ class WorkerContext:
   """
   def __init__(self):
     self.context = Context()
+    _CAPI_HPCWorkerConnect(self.context)
 
   @property
   def rank(self) -> int:
