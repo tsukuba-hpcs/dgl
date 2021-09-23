@@ -2,7 +2,6 @@
 
 from .._ffi.object import register_object, ObjectBase
 from .._ffi.function import _init_api
-from typing import Tuple
 
 __all__ = ['ManagerContext', 'WorkerContext']
 
