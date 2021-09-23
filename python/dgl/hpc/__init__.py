@@ -3,5 +3,5 @@
 """
 
 from .context import *
-from .partition import *
+from .shard import *
 from .tensor import *

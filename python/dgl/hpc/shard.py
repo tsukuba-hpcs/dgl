@@ -1,10 +1,10 @@
-"""HPC Partition"""
+"""HPC Shard"""
 
 from abc import ABC, abstractmethod
 
-__all__ = ['PartitionPolicy', 'ModuloPolicy']
+__all__ = ['ShardPolicy', 'ModuloPolicy']
 
-class PartitionPolicy(ABC):
+class ShardPolicy(ABC):
   row_size: int
   manager_size: int
 
@@ -18,7 +18,7 @@ class PartitionPolicy(ABC):
   def __getitem__(self, index: int) -> int:
     pass
 
-class ModuloPolicy(PartitionPolicy):
+class ModuloPolicy(ShardPolicy):
 
   def __init__(self, row_size: int, manager_size: int):
     super().__init__(row_size, manager_size)
