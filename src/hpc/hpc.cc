@@ -178,6 +178,11 @@ DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCManagerLaunchWorker")
   bcast_manager_context(ctx);
 });
 
+static inline void bcast_sockaddr(ContextRef ctx, struct sockaddr_in *socks) {
+  MPI_Barrier(ctx->inter_comm);
+  MPI_Bcast(&socks[0], sizeof(sockaddr_in) * ctx->size, MPI_BYTE, MPI_ROOT, ctx->inter_comm);
+}
+
 DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCManagerServe")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
   ucp_listener_h ucp_listener;
@@ -193,6 +198,7 @@ DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCManagerServe")
     << ":" << htons(sock.sin_port) << " ....";
   }
   gather_sockaddr(&socks[0], sock);
+  bcast_sockaddr(ctx, &socks[0]);
   ucp_listener_destroy(ucp_listener);
 });
 
@@ -206,11 +212,18 @@ static inline void recv_manager_context(ContextRef ctx) {
             << "remote_size=" << ctx->remote_size;
 }
 
+static inline void recv_sockaddr(ContextRef ctx, struct sockaddr_in *socks) {
+  MPI_Barrier(ctx->inter_comm);
+  MPI_Bcast(socks, sizeof(sockaddr_in) * ctx->remote_size, MPI_BYTE, 0, ctx->inter_comm);
+}
+
 DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCWorkerConnect")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
   ContextRef ctx = args[0];
   MPI_Comm_get_parent(&ctx->inter_comm);
   recv_manager_context(ctx);
+  std::vector<struct sockaddr_in> socks(ctx->remote_size);
+  recv_sockaddr(ctx, &socks[0]);
 });
 
 }  // namespace hpc
