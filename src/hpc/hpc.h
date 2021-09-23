@@ -12,6 +12,7 @@
 
 #include <dgl/runtime/object.h>
 #include <cstdint>
+#include <vector>
 
 namespace dgl {
 namespace hpc {
@@ -24,6 +25,7 @@ struct Context : public runtime::Object {
   MPI_Comm inter_comm;
   int32_t remote_rank;  // for worker only
   int32_t remote_size;
+  std::vector<ucp_ep_h> remote_ep;
 
   static constexpr const char* _type_key = "hpc.Context";
   DGL_DECLARE_OBJECT_TYPE_INFO(Context, runtime::Object);

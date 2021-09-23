@@ -5,7 +5,6 @@
  */
 
 #include "hpc.h"
-#include <arpa/inet.h>
 
 #include <dgl/runtime/container.h>
 #include <dgl/packed_func_ext.h>
@@ -46,7 +45,7 @@ DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCCreateContext")
   };
   status = ucp_init(&ucp_params, NULL, &rst->ucp_context);
   if (status != UCS_OK) {
-    LOG(FATAL) << "ucp_init failed";
+    LOG(FATAL) << "ucp_init failed with " << ucs_status_string(status);
   }
   ucp_worker_params_t worker_params = {
     .field_mask = UCP_WORKER_PARAM_FIELD_THREAD_MODE,
@@ -55,7 +54,7 @@ DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCCreateContext")
   status = ucp_worker_create(rst->ucp_context,
     &worker_params, &rst->ucp_worker);
   if (status != UCS_OK) {
-    LOG(FATAL) << "ucp_worker_create failed";
+    LOG(FATAL) << "ucp_worker_create failed with " << ucs_status_string(status);
   }
   *rv = rst;
 });
@@ -63,6 +62,9 @@ DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCCreateContext")
 DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCFinalizeContext")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
   ContextRef ctx = args[0];
+  for (ucp_ep_h &ep : ctx->remote_ep) {
+    ucp_ep_destroy(ep);
+  }
   ucp_worker_destroy(ctx->ucp_worker);
   ucp_cleanup(ctx->ucp_context);
   MPI_Finalize();
@@ -81,55 +83,6 @@ DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCContextGetSize")
 });
 
 //////////////////////////// Manager ////////////////////////////
-
-static void server_conn_handle_cb(ucp_conn_request_h conn_request, void *arg) {
-  Context* ctx = reinterpret_cast<Context *>(arg);
-  LOG(INFO) << "rank=" << ctx->rank << ": server_conn_handle_cb is called";
-}
-
-static inline void create_listener(const ContextRef &ctx, ucp_listener_h *ucp_listener) {
-  ucs_status_t status;
-  struct sockaddr_in listen_addr = {
-    .sin_family = AF_INET,
-    .sin_port = htons(0),
-    .sin_addr = {
-        .s_addr = INADDR_ANY,
-    },
-  };
-  ucp_listener_params_t params = {
-    .field_mask = UCP_LISTENER_PARAM_FIELD_SOCK_ADDR |
-                  UCP_LISTENER_PARAM_FIELD_CONN_HANDLER,
-    .sockaddr = {
-      .addr = (const struct sockaddr*)&listen_addr,
-      .addrlen = sizeof(listen_addr)
-    },
-    .conn_handler = {
-      .cb = server_conn_handle_cb,
-      .arg = ctx.sptr().get(),
-    }
-  };
-  status = ucp_listener_create(ctx->ucp_worker, &params, ucp_listener);
-  if (status != UCS_OK) {
-    LOG(FATAL) << "ucp_listener_create failed";
-  }
-}
-
-static inline void get_sockaddr(struct sockaddr_in *sock, const ucp_listener_h &ucp_listener) {
-  ucs_status_t status;
-  ucp_listener_attr_t attr = {
-    .field_mask = UCP_LISTENER_ATTR_FIELD_SOCKADDR,
-  };
-  status = ucp_listener_query(ucp_listener, &attr);
-  if (status != UCS_OK) {
-    LOG(FATAL) << "ucp_listener_query failed";
-  }
-  std::memcpy(sock, &attr.sockaddr, sizeof(sockaddr_in));
-}
-
-static inline void gather_sockaddr(struct sockaddr_in *socks, const struct sockaddr_in &sock) {
-  MPI_Barrier(MPI_COMM_WORLD);
-  MPI_Allgather(&sock, sizeof(sock), MPI_BYTE, socks, sizeof(sock), MPI_BYTE, MPI_COMM_WORLD);
-}
 
 static inline void spawn_worker(MPI_Comm *comm, int32_t num_workers,
                                 const std::vector<std::string> &worker_args) {
@@ -157,12 +110,6 @@ static inline void spawn_worker(MPI_Comm *comm, int32_t num_workers,
     MPI_COMM_SELF, comm, MPI_ERRCODES_IGNORE);
 }
 
-static inline void bcast_manager_context(ContextRef ctx) {
-  MPI_Barrier(ctx->inter_comm);
-  MPI_Bcast(&ctx->rank, 1, MPI_INT32_T, MPI_ROOT, ctx->inter_comm);
-  MPI_Bcast(&ctx->size, 1, MPI_INT32_T, MPI_ROOT, ctx->inter_comm);
-}
-
 DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCManagerLaunchWorker")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
   ContextRef ctx = args[0];
@@ -175,31 +122,36 @@ DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCManagerLaunchWorker")
   spawn_worker(&ctx->inter_comm, num_workers, worker_args);
   ctx->remote_rank = -1;
   ctx->remote_size = num_workers;
-  bcast_manager_context(ctx);
 });
 
-static inline void bcast_sockaddr(ContextRef ctx, struct sockaddr_in *socks) {
+static inline void bcast_manager_context(ContextRef ctx) {
   MPI_Barrier(ctx->inter_comm);
-  MPI_Bcast(&socks[0], sizeof(sockaddr_in) * ctx->size, MPI_BYTE, MPI_ROOT, ctx->inter_comm);
+  MPI_Bcast(&ctx->rank, 1, MPI_INT32_T, MPI_ROOT, ctx->inter_comm);
+  MPI_Bcast(&ctx->size, 1, MPI_INT32_T, MPI_ROOT, ctx->inter_comm);
+}
+
+static inline void bcast_manager_address(ContextRef ctx) {
+  ucp_address_t *addr;
+  size_t addr_len;
+  ucs_status_t status;
+  status = ucp_worker_get_address(ctx->ucp_worker, &addr, &addr_len);
+  if (status != UCS_OK) {
+    LOG(FATAL) << "ucp_worker_get_address failed with " << ucs_status_string(status);
+  }
+  LOG(INFO) << "ucp address length=" << addr_len;
+  MPI_Barrier(MPI_COMM_WORLD);
+  MPI_Bcast(&addr_len, sizeof(size_t), MPI_BYTE, MPI_ROOT, ctx->inter_comm);
+  std::vector<char> buffer(addr_len * ctx->size);
+  MPI_Allgather(addr, addr_len, MPI_BYTE, &buffer[0], addr_len, MPI_BYTE, MPI_COMM_WORLD);
+  MPI_Bcast(&buffer[0], addr_len * ctx->size, MPI_BYTE, MPI_ROOT, ctx->inter_comm);
+  ucp_worker_release_address(ctx->ucp_worker, addr);
 }
 
 DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCManagerServe")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
-  ucp_listener_h ucp_listener;
-  struct sockaddr_in sock;
   ContextRef ctx = args[0];
-  std::vector<struct sockaddr_in> socks(ctx->size);
-  create_listener(ctx, &ucp_listener);
-  get_sockaddr(&sock, ucp_listener);
-  {
-    char buffer[100];
-    LOG(INFO) << "rank=" << ctx->rank << " listen "
-    << inet_ntop(AF_INET, &sock.sin_addr, reinterpret_cast<char *>(&buffer), 100)
-    << ":" << htons(sock.sin_port) << " ....";
-  }
-  gather_sockaddr(&socks[0], sock);
-  bcast_sockaddr(ctx, &socks[0]);
-  ucp_listener_destroy(ucp_listener);
+  bcast_manager_context(ctx);
+  bcast_manager_address(ctx);
 });
 
 //////////////////////////// Worker ////////////////////////////
@@ -212,9 +164,26 @@ static inline void recv_manager_context(ContextRef ctx) {
             << "remote_size=" << ctx->remote_size;
 }
 
-static inline void recv_sockaddr(ContextRef ctx, struct sockaddr_in *socks) {
-  MPI_Barrier(ctx->inter_comm);
-  MPI_Bcast(socks, sizeof(sockaddr_in) * ctx->remote_size, MPI_BYTE, 0, ctx->inter_comm);
+static inline void recv_manager_address(ContextRef ctx) {
+  size_t addr_len;
+  ucs_status_t status;
+  ctx->remote_ep.resize(ctx->remote_size);
+  MPI_Bcast(&addr_len, sizeof(size_t), MPI_BYTE, 0, ctx->inter_comm);
+  std::vector<char> buffer(addr_len * ctx->remote_size);
+  MPI_Bcast(&buffer[0], addr_len * ctx->remote_size, MPI_BYTE, 0, ctx->inter_comm);
+  for (int32_t rank = 0; rank < ctx->remote_size; rank++) {
+    ucp_ep_params_t ep_params = {
+      .field_mask = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS,
+      .address = reinterpret_cast<ucp_address_t *>(&buffer[addr_len * rank]),
+    };
+    status = ucp_ep_create(ctx->ucp_worker, &ep_params, &ctx->remote_ep[rank]);
+    if (status != UCS_OK) {
+      LOG(FATAL) << "parent_manager_rank=" << ctx->remote_rank << " "
+                 << "worker_rank=" << ctx->rank << " "
+                 << "target_manager_rank=" << rank << " "
+                 << "ucp_ep_create failed " << ucs_status_string(status);
+    }
+  }
 }
 
 DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCWorkerConnect")
@@ -222,8 +191,7 @@ DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCWorkerConnect")
   ContextRef ctx = args[0];
   MPI_Comm_get_parent(&ctx->inter_comm);
   recv_manager_context(ctx);
-  std::vector<struct sockaddr_in> socks(ctx->remote_size);
-  recv_sockaddr(ctx, &socks[0]);
+  recv_manager_address(ctx);
 });
 
 }  // namespace hpc
