@@ -10,6 +10,7 @@
 #include <dgl/runtime/object.h>
 #include <unordered_map>
 #include <string>
+#include <vector>
 
 namespace dgl {
 namespace hpc {
@@ -17,7 +18,9 @@ namespace shard {
 
 
 struct Shard : public runtime::Object {
-  int32_t rank;
+  std::unordered_map<std::string, int> name2id;
+  std::vector<runtime::NDArray> tensor;
+
   static constexpr const char* _type_key = "hpc.Shard";
   DGL_DECLARE_OBJECT_TYPE_INFO(Shard, runtime::Object);
 };
