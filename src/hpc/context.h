@@ -37,4 +37,4 @@ DGL_DEFINE_OBJECT_REF(ContextRef, Context);
 }  // namespace context
 }  // namespace hpc
 }  // namespace dgl
-#endif  // DGL_HPC_Context_H_
+#endif  // DGL_HPC_CONTEXT_H_
