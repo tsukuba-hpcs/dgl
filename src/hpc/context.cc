@@ -1,10 +1,10 @@
 /*!
  *  Copyright (c) 2021 by Contributors
- * \file hpc/hpc.cc
- * \brief Implementation of HPC module.
+ * \file hpc/context.cc
+ * \brief Implementation of HPC context.
  */
 
-#include "hpc.h"
+#include "context.h"
 
 #include <dgl/runtime/container.h>
 #include <dgl/packed_func_ext.h>
@@ -20,6 +20,7 @@
 
 namespace dgl {
 namespace hpc {
+namespace context {
 
 using namespace dgl::runtime;
 
@@ -194,5 +195,6 @@ DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCWorkerConnect")
   recv_manager_address(ctx);
 });
 
+}  // namespace context
 }  // namespace hpc
 }  // namespace dgl

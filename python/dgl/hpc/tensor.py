@@ -5,14 +5,14 @@ from .context import ManagerContext
 from .shard import ShardPolicy
 from typing import Tuple, Callable, Type
 
-__all__ = ['serveTensor', 'TensorShard']
+__all__ = ['createTensor', 'TensorShard']
 
 class TensorShard:
   def __init__(self):
     pass
 
-def serveTensor(mcontext: ManagerContext, name: str, shape: Tuple[int, ...], dtype: Type[F.dtype],
+def createTensor(mcontext: ManagerContext, name: str, shape: Tuple[int, ...], dtype: Type[F.dtype],
   policy: Type[ShardPolicy]) -> TensorShard:
-  print('serveTensor called')
+  print('createTensor called')
   print('shape', shape)
   return TensorShard()

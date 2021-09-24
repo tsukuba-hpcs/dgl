@@ -1,11 +1,11 @@
 /*!
  *  Copyright (c) 2021 by Contributors
- * \file hpc/hpc.h
- * \brief Common headers for HPC module.
+ * \file hpc/context.h
+ * \brief headers for HPC context.
  */
 
-#ifndef DGL_HPC_HPC_H_
-#define DGL_HPC_HPC_H_
+#ifndef DGL_HPC_CONTEXT_H_
+#define DGL_HPC_CONTEXT_H_
 
 #include <ucp/api/ucp.h>
 #include <mpi.h>
@@ -16,6 +16,7 @@
 
 namespace dgl {
 namespace hpc {
+namespace context {
 
 struct Context : public runtime::Object {
   int32_t rank;
@@ -33,6 +34,7 @@ struct Context : public runtime::Object {
 
 DGL_DEFINE_OBJECT_REF(ContextRef, Context);
 
+}  // namespace context
 }  // namespace hpc
 }  // namespace dgl
-#endif  // DGL_HPC_HPC_H_
+#endif  // DGL_HPC_Context_H_
