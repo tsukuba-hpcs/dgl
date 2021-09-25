@@ -68,30 +68,21 @@ static inline void sync_all_proc(ContextRef ctx) {
   // If Manager
   if (ctx->remote_rank < 0) {
     MPI_Ibarrier(MPI_COMM_WORLD, &req1);
-    while (true) {
+    do {
       ucp_worker_progress(ctx->ucp_worker);
       MPI_Test(&req1, &flag, MPI_STATUS_IGNORE);
-      if (flag) {
-        break;
-      }
-    }
+    } while (!flag);
     MPI_Ibarrier(ctx->inter_comm, &req2);
-    while (true) {
+    do {
       ucp_worker_progress(ctx->ucp_worker);
       MPI_Test(&req2, &flag, MPI_STATUS_IGNORE);
-      if (flag) {
-        break;
-      }
-    }
+    } while (!flag);
   } else {
     MPI_Ibarrier(ctx->inter_comm, &req2);
-    while (true) {
+    do {
       ucp_worker_progress(ctx->ucp_worker);
       MPI_Test(&req2, &flag, MPI_STATUS_IGNORE);
-      if (flag) {
-        break;
-      }
-    }
+    } while (!flag);
   }
 }
 
