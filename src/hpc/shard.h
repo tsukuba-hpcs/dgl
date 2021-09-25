@@ -7,6 +7,8 @@
 #ifndef DGL_HPC_SHARD_H_
 #define DGL_HPC_SHARD_H_
 
+#include <ucp/api/ucp.h>
+
 #include <dgl/runtime/c_runtime_api.h>
 
 #include <dgl/runtime/object.h>
@@ -34,6 +36,7 @@ struct TensorMetaData {
   int ndim;
   std::vector<int64_t> shape;
   std::vector<void*> data;
+  std::vector<ucp_rkey_h> rkeys;
 };
 
 struct ShardClient : public runtime::Object {

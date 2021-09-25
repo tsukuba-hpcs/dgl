@@ -13,6 +13,7 @@
 #include <memory>
 #include <vector>
 #include <string>
+#include <utility>
 
 #include "../c_api_common.h"
 #include "shard.h"
@@ -64,11 +65,29 @@ DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCCreateContext")
 DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCFinalizeContext")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
   ContextRef ctx = args[0];
+  ucs_status_t status;
   for (ucp_mem_h &mem : ctx->register_mem) {
-    ucp_mem_unmap(ctx->ucp_context, mem);
+    status = ucp_mem_unmap(ctx->ucp_context, mem);
+    if (status != UCS_OK) {
+      LOG(FATAL) << "ucp_mem_unmap failed with " << ucs_status_string(status); 
+    }
   }
+  std::vector<ucs_status_ptr_t> stats;
+  ucp_request_param_t rparams = {
+    .op_attr_mask = 0,
+  };
   for (ucp_ep_h &ep : ctx->remote_ep) {
-    ucp_ep_destroy(ep);
+    stats.push_back(ucp_ep_close_nbx(ep, &rparams));
+  }
+  for (ucs_status_ptr_t &stat : stats) {
+    if (UCS_PTR_IS_ERR(stat)) {
+      LOG(FATAL) << "ucp ep close failed with "
+                 << ucs_status_string(UCS_PTR_STATUS(stat));
+    }
+    while (ucp_request_check_status(stat) == UCS_INPROGRESS) {
+      ucp_worker_progress(ctx->ucp_worker);
+    }
+    ucp_request_free(stat);
   }
   ucp_worker_destroy(ctx->ucp_worker);
   ucp_cleanup(ctx->ucp_context);
@@ -156,32 +175,33 @@ static inline void register_shard(ContextRef ctx, shard::ShardRef shard,
   void** rkeys, size_t *rkeys_len) {
   ucs_status_t status;
   ctx->register_mem.resize(shard->tensor.size());
-  for (int i = 0; i < static_cast<int>(shard->tensor.size()); i++) {
-    size_t byte_length = shard->tensor[i]->dtype.bits % 8;
-    for (int j = 0; j < shard->tensor[i]->ndim; j++) {
-      byte_length *= shard->tensor[i]->shape[j];
+  for (int id = 0; id < static_cast<int>(shard->tensor.size()); id++) {
+    size_t byte_length = shard->tensor[id]->dtype.bits % 8;
+    for (int j = 0; j < shard->tensor[id]->ndim; j++) {
+      byte_length *= shard->tensor[id]->shape[j];
     }
     ucp_mem_map_params mem_params = {
       .field_mask = UCP_MEM_MAP_PARAM_FIELD_ADDRESS | UCP_MEM_MAP_PARAM_FIELD_LENGTH,
-      .address = shard->tensor[i]->data,
+      .address = shard->tensor[id]->data,
       .length = byte_length,
     };
-    status = ucp_mem_map(ctx->ucp_context, &mem_params, &ctx->register_mem[i]);
+    status = ucp_mem_map(ctx->ucp_context, &mem_params, &ctx->register_mem[id]);
     if (status != UCS_OK) {
       LOG(FATAL) << "rank=" << ctx->rank << " "
-                 << "tensor_id=" << i << " "
+                 << "tensor_id=" << id << " "
                  << "ucp_mem_map failed with" << ucs_status_string(status);
     }
-    status = ucp_rkey_pack(ctx->ucp_context, ctx->register_mem[i], &rkeys[i], &rkeys_len[i]);
+    status = ucp_rkey_pack(ctx->ucp_context, ctx->register_mem[id], &rkeys[id], &rkeys_len[id]);
     if (status != UCS_OK) {
       LOG(FATAL) << "rank=" << ctx->rank << " "
-                 << "tensor_id=" << i << " "
+                 << "tensor_id=" << id << " "
                  << "ucp_rkey_pack failed with" << ucs_status_string(status);
     }
   }
 }
 
-static inline void bcast_manager_shard(ContextRef ctx, shard::ShardRef shard) {
+static inline void bcast_manager_shard(ContextRef ctx, shard::ShardRef shard,
+  void** rkeys, size_t* rkeys_len) {
   int size = shard->tensor.size();
   if (static_cast<int>(shard->name2id.size()) != size) {
     LOG(FATAL) << "number of tensor is not equal to number of name";
@@ -193,6 +213,20 @@ static inline void bcast_manager_shard(ContextRef ctx, shard::ShardRef shard) {
   DLDataType dtype;
   int ndim;
   std::vector<int64_t> shape;
+  int64_t rkey_len, rkeys_len_total;
+  std::vector<char> rkeys_buffer_total;
+  std::vector<int> recvcounts(ctx->size), displs(ctx->size);
+  void *data;
+  std::vector<void*> data_total(ctx->size);
+  // for each tensor, broadcast these data.
+  // 1. name
+  // 2. dtype
+  // 3. ndim
+  // 4. shape
+  // 5. rkeys total length (rkey is used for RDMA Read/Write to buffer)
+  // 6. displs (offset of buffer) for each manager's rkey
+  // 7. rkeys (rank=k manager's rkey is rkeys[displs[k]])
+  // 8. buffer addresses for each manager. (buffer address is used for RDMA Read/Write)
   for (int id = 0; id < size; id++) {
     found = false;
     for (auto kv : shard->name2id) {
@@ -212,9 +246,21 @@ static inline void bcast_manager_shard(ContextRef ctx, shard::ShardRef shard) {
     std::memcpy(&dtype, &shard->tensor[id]->dtype, sizeof(DLDataType));
     ndim = shard->tensor[id]->ndim;
     shape.assign(shard->tensor[id]->shape, shard->tensor[id]->shape + ndim);
-    MPI_Bcast(&dtype, sizeof(DLDataType), MPI_BYTE, MPI_ROOT, ctx->inter_comm);
+    MPI_Bcast(&dtype, sizeof(DGLType), MPI_BYTE, MPI_ROOT, ctx->inter_comm);
     MPI_Bcast(&ndim, 1, MPI_INT, MPI_ROOT, ctx->inter_comm);
     MPI_Bcast(&shape[0], ndim, MPI_INT64_T, MPI_ROOT, ctx->inter_comm);
+    rkey_len = static_cast<int64_t>(rkeys_len[id]);
+    MPI_Allreduce(&rkey_len, &rkeys_len_total, 1, MPI_INT64_T, MPI_SUM, MPI_COMM_WORLD);
+    rkeys_buffer_total.resize(rkeys_len_total);
+    MPI_Allgatherv(rkeys[id], rkey_len, MPI_BYTE, &rkeys_buffer_total[0],
+      &recvcounts[0], &displs[0], MPI_BYTE, MPI_COMM_WORLD);
+    MPI_Bcast(&rkeys_len_total, 1, MPI_INT64_T, MPI_ROOT, ctx->inter_comm);
+    MPI_Bcast(&displs[0], ctx->size, MPI_INT, MPI_ROOT, ctx->inter_comm);
+    MPI_Bcast(&rkeys_buffer_total[0], rkeys_len_total, MPI_BYTE, MPI_ROOT, ctx->inter_comm);
+    data = shard->tensor[id]->data;
+    MPI_Allgather(&data, sizeof(void*), MPI_BYTE, &data_total[0],
+      sizeof(void*), MPI_BYTE, MPI_COMM_WORLD);
+    MPI_Bcast(&data_total[0], sizeof(void*) * ctx->size, MPI_BYTE, MPI_ROOT, ctx->inter_comm);
   }
 }
 
@@ -231,10 +277,10 @@ DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCManagerServe")
   std::vector<void*> rkeys(shard->tensor.size());
   std::vector<size_t> rkeys_len(shard->tensor.size());
   register_shard(ctx, shard, &rkeys[0], &rkeys_len[0]);
-  release_rkeys(ctx, shard, &rkeys[0]);
   bcast_manager_context(ctx);
   bcast_manager_address(ctx);
-  bcast_manager_shard(ctx, shard);
+  bcast_manager_shard(ctx, shard, &rkeys[0], &rkeys_len[0]);
+  release_rkeys(ctx, shard, &rkeys[0]);
 });
 
 //////////////////////////// Worker ////////////////////////////
@@ -256,8 +302,9 @@ static inline void recv_manager_address(ContextRef ctx) {
   MPI_Bcast(&buffer[0], addr_len * ctx->remote_size, MPI_BYTE, 0, ctx->inter_comm);
   for (int32_t rank = 0; rank < ctx->remote_size; rank++) {
     ucp_ep_params_t ep_params = {
-      .field_mask = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS,
+      .field_mask = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS | UCP_EP_PARAM_FIELD_ERR_HANDLING_MODE,
       .address = reinterpret_cast<ucp_address_t *>(&buffer[addr_len * rank]),
+      .err_mode = UCP_ERR_HANDLING_MODE_PEER,
     };
     status = ucp_ep_create(ctx->ucp_worker, &ep_params, &ctx->remote_ep[rank]);
     if (status != UCS_OK) {
@@ -270,18 +317,23 @@ static inline void recv_manager_address(ContextRef ctx) {
 }
 
 static inline void recv_manager_shard(ContextRef ctx, shard::ShardClientRef client) {
+  ucs_status_t status;
   int size;
   int name_len;
-  std::vector<char> buffer;
+  std::vector<char> name_buffer;
   MPI_Bcast(&size, 1, MPI_INT, 0, ctx->inter_comm);
   client->metadata.resize(size);
+  int64_t rkeys_len_total;
+  std::vector<char> rkeys_buffer_total;
+  std::vector<int> displs(ctx->remote_size);
+  std::vector<void*> data_total(ctx->remote_size);
   for (int id = 0; id < size; id++) {
     MPI_Bcast(&name_len, 1, MPI_INT, 0, ctx->inter_comm);
-    buffer.resize(name_len);
-    MPI_Bcast(&buffer[0], name_len, MPI_CHAR, 0, ctx->inter_comm);
-    std::string name(buffer.begin(), buffer.end());
+    name_buffer.resize(name_len);
+    MPI_Bcast(&name_buffer[0], name_len, MPI_CHAR, 0, ctx->inter_comm);
+    std::string name(name_buffer.begin(), name_buffer.end());
     client->name2id[name] = id;
-    MPI_Bcast(&client->metadata[id].dtype, sizeof(DLDataType), MPI_BYTE, 0, ctx->inter_comm);
+    MPI_Bcast(&client->metadata[id].dtype, sizeof(DGLType), MPI_BYTE, 0, ctx->inter_comm);
     MPI_Bcast(&client->metadata[id].ndim, 1, MPI_INT, 0, ctx->inter_comm);
     client->metadata[id].shape.resize(client->metadata[id].ndim);
     MPI_Bcast(&client->metadata[id].shape[0],
@@ -289,6 +341,23 @@ static inline void recv_manager_shard(ContextRef ctx, shard::ShardClientRef clie
     LOG(INFO) << "id=" << id << " "
               << "name=" << name << " "
               << "ndim=" << client->metadata[id].ndim;
+    MPI_Bcast(&rkeys_len_total, 1, MPI_INT64_T, 0, ctx->inter_comm);
+    rkeys_buffer_total.resize(rkeys_len_total);
+    MPI_Bcast(&displs[0], ctx->remote_size, MPI_INT, 0, ctx->inter_comm);
+    MPI_Bcast(&rkeys_buffer_total[0], rkeys_len_total, MPI_BYTE, 0, ctx->inter_comm);
+    MPI_Bcast(&data_total[0], sizeof(void*) * ctx->remote_size, MPI_BYTE, 0, ctx->inter_comm);
+    client->metadata[id].data.clear();
+    client->metadata[id].rkeys.clear();
+    for (int rank = 0; rank < ctx->remote_size; rank++) {
+      ucp_rkey_h rkey;
+      client->metadata[id].data.push_back(std::move(data_total[rank]));
+      status = ucp_ep_rkey_unpack(ctx->remote_ep[rank],
+        &rkeys_buffer_total[displs[rank]], &rkey);
+      if (status != UCS_OK) {
+        LOG(FATAL) << "ucp_ep_rkey_unpack failed with " << ucs_status_string(status);
+      }
+      client->metadata[id].rkeys.push_back(std::move(rkey));
+    }
   }
 }
 
@@ -300,6 +369,16 @@ DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCWorkerConnect")
   recv_manager_context(ctx);
   recv_manager_address(ctx);
   recv_manager_shard(ctx, client);
+});
+
+DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCFinalizeShardClient")
+.set_body([] (DGLArgs args, DGLRetValue* rv) {
+  shard::ShardClientRef client = args[0];
+  for (shard::TensorMetaData &metadata : client->metadata) {
+    for (ucp_rkey_h rkey : metadata.rkeys) {
+      ucp_rkey_destroy(rkey);
+    }
+  }
 });
 
 }  // namespace context

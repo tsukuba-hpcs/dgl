@@ -62,6 +62,9 @@ class WorkerContext:
     self.client = ShardClient()
     _CAPI_HPCWorkerConnect(self.context, self.client)
 
+  def __del__(self):
+    _CAPI_HPCFinalizeShardClient(self.client)
+
   @property
   def rank(self) -> int:
     return self.context.rank
