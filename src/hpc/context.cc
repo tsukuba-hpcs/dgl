@@ -5,6 +5,7 @@
  */
 
 #include "context.h"
+#include "shard.h"
 
 #include <dgl/runtime/container.h>
 #include <dgl/packed_func_ext.h>
@@ -148,9 +149,38 @@ static inline void bcast_manager_address(ContextRef ctx) {
   ucp_worker_release_address(ctx->ucp_worker, addr);
 }
 
+static inline void bcast_manager_shard(ContextRef ctx, shard::ShardRef shard) {
+  int size = shard->tensor.size();
+  if (static_cast<int>(shard->name2id.size()) != size) {
+    LOG(FATAL) << "number of tensor is not equal to number of name";
+  }
+  MPI_Bcast(&size, 1, MPI_INT, MPI_ROOT, ctx->inter_comm);
+  std::vector<char> name;
+  bool found;
+  int name_len;
+  for (int id=0; id < size; id++) {
+    found = false;
+    for (auto kv : shard->name2id) {
+      if (kv.second == id) {
+        found = true;
+        name = std::vector<char>(kv.first.begin(), kv.first.end());
+        name.push_back('\0');
+        break;
+      }
+    }
+    if (!found) {
+      LOG(FATAL) << "id=" << id << "'s name is not found in shard";
+    }
+    name_len = name.size();
+    MPI_Bcast(&name_len, 1, MPI_INT, MPI_ROOT, ctx->inter_comm);
+    MPI_Bcast(&name[0], name_len, MPI_CHAR, MPI_ROOT, ctx->inter_comm);
+  }
+}
+
 DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCManagerServe")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
   ContextRef ctx = args[0];
+  shard::ShardRef shard = args[1];
   bcast_manager_context(ctx);
   bcast_manager_address(ctx);
 });
@@ -187,9 +217,14 @@ static inline void recv_manager_address(ContextRef ctx) {
   }
 }
 
+static inline void recv_manager_shard() {
+
+}
+
 DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCWorkerConnect")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
   ContextRef ctx = args[0];
+  shard::ShardClientRef client = args[1];
   MPI_Comm_get_parent(&ctx->inter_comm);
   recv_manager_context(ctx);
   recv_manager_address(ctx);

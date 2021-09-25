@@ -30,6 +30,13 @@ DGL_REGISTER_GLOBAL("hpc.shard._CAPI_HPCCreateShard")
   *rv = rst;
 });
 
+DGL_REGISTER_GLOBAL("hpc.shard._CAPI_HPCCreateShardClient")
+.set_body([] (DGLArgs args, DGLRetValue* rv) {
+  std::shared_ptr<ShardClient> rst(new ShardClient);
+  LOG(INFO) << "CreateShardClient called";
+  *rv = rst;
+});
+
 DGL_REGISTER_GLOBAL("hpc.shard._CAPI_HPCRegisterTensor")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
   ShardRef shard = args[0];

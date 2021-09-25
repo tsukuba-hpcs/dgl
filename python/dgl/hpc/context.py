@@ -2,6 +2,7 @@
 
 from .._ffi.object import register_object, ObjectBase
 from .._ffi.function import _init_api
+from .shard import Shard, ShardClient
 
 __all__ = ['ManagerContext', 'WorkerContext']
 
@@ -47,9 +48,10 @@ class ManagerContext:
     self.launched = True
     _CAPI_HPCManagerLaunchWorker(self.context, num_workers, py, worker, *args)
 
-  def serve(self):
+  def serve(self, shard: Shard):
     assert self.launched, "must launch worker."
-    _CAPI_HPCManagerServe(self.context)
+    _CAPI_HPCManagerServe(self.context, shard)
+
 
 class WorkerContext:
   """
@@ -57,7 +59,8 @@ class WorkerContext:
   """
   def __init__(self):
     self.context = Context()
-    _CAPI_HPCWorkerConnect(self.context)
+    self.client = ShardClient()
+    _CAPI_HPCWorkerConnect(self.context, self.client)
 
   @property
   def rank(self) -> int:

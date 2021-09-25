@@ -7,7 +7,7 @@ from .._ffi.ndarray import empty
 from typing import Tuple, Callable, Type
 from dgl import backend as F
 
-__all__ = ['ShardPolicy', 'ModuloPolicy', 'Shard', 'createTensor', 'TensorShard']
+__all__ = ['ShardPolicy', 'ModuloPolicy', 'Shard', 'ShardClient', 'createTensor', 'TensorShard']
 
 class ShardPolicy(ABC):
   row_size: int
@@ -52,6 +52,16 @@ class Shard(ObjectBase):
     )
     self.rank = rank
     self.size = size
+
+@register_object('hpc.ShardClient')
+class ShardClient(ObjectBase):
+  def __init__(self):
+    self.__init_handle_by_constructor__(
+      _CAPI_HPCCreateShardClient
+    )
+
+  def get_id(self, name: str) -> int:
+    return 0
 
 class TensorShard:
   id: int

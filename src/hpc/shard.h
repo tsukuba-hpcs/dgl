@@ -27,6 +27,15 @@ struct Shard : public runtime::Object {
 
 DGL_DEFINE_OBJECT_REF(ShardRef, Shard);
 
+struct ShardClient : public runtime::Object {
+  std::unordered_map<std::string, int> name2id;
+
+  static constexpr const char* _type_key = "hpc.ShardClient";
+  DGL_DECLARE_OBJECT_TYPE_INFO(ShardClient, runtime::Object);
+};
+
+DGL_DEFINE_OBJECT_REF(ShardClientRef, ShardClient);
+
 }  // namespace shard
 }  // namespace hpc
 }  // namespace dgl
