@@ -158,7 +158,7 @@ static inline void bcast_manager_shard(ContextRef ctx, shard::ShardRef shard) {
   std::vector<char> name;
   bool found;
   int name_len;
-  for (int id=0; id < size; id++) {
+  for (int id = 0; id < size; id++) {
     found = false;
     for (auto kv : shard->name2id) {
       if (kv.second == id) {
@@ -183,6 +183,7 @@ DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCManagerServe")
   shard::ShardRef shard = args[1];
   bcast_manager_context(ctx);
   bcast_manager_address(ctx);
+  bcast_manager_shard(ctx, shard);
 });
 
 //////////////////////////// Worker ////////////////////////////
@@ -217,7 +218,19 @@ static inline void recv_manager_address(ContextRef ctx) {
   }
 }
 
-static inline void recv_manager_shard() {
+static inline void recv_manager_shard(ContextRef ctx, shard::ShardClientRef client) {
+  int size;
+  int name_len;
+  std::vector<char> buffer;
+  MPI_Bcast(&size, 1, MPI_INT, 0, ctx->inter_comm);
+  for (int id = 0; id < size; id++) {
+    MPI_Bcast(&name_len, 1, MPI_INT, 0, ctx->inter_comm);
+    buffer.resize(name_len);
+    MPI_Bcast(&buffer[0], name_len, MPI_CHAR, 0, ctx->inter_comm);
+    std::string name(buffer.begin(), buffer.end());
+    LOG(INFO) << "id=" << id << " name=" << name;
+    client->name2id[name] = id;
+  }
 }
 
 DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCWorkerConnect")
@@ -227,6 +240,7 @@ DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCWorkerConnect")
   MPI_Comm_get_parent(&ctx->inter_comm);
   recv_manager_context(ctx);
   recv_manager_address(ctx);
+  recv_manager_shard(ctx, client);
 });
 
 }  // namespace context
