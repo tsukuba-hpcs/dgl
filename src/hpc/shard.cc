@@ -43,7 +43,7 @@ DGL_REGISTER_GLOBAL("hpc.shard._CAPI_HPCRegisterTensor")
     LOG(FATAL) << "number of tensor is not equal to number of name";
   }
   shard->name2id[name] = id;
-  shard->tensor.push_back(tensor);
+  shard->tensor.push_back(std::move(tensor));
   *rv = id;
 });
 
