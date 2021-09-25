@@ -62,6 +62,39 @@ DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCCreateContext")
   *rv = rst;
 });
 
+static inline void sync_all_proc(ContextRef ctx) {
+  MPI_Request req1, req2;
+  int flag;
+  // If Manager
+  if (ctx->remote_rank < 0) {
+    MPI_Ibarrier(MPI_COMM_WORLD, &req1);
+    while (true) {
+      ucp_worker_progress(ctx->ucp_worker);
+      MPI_Test(&req1, &flag, MPI_STATUS_IGNORE);
+      if (flag) {
+        break;
+      }
+    }
+    MPI_Ibarrier(ctx->inter_comm, &req2);
+    while (true) {
+      ucp_worker_progress(ctx->ucp_worker);
+      MPI_Test(&req2, &flag, MPI_STATUS_IGNORE);
+      if (flag) {
+        break;
+      }
+    }
+  } else {
+    MPI_Ibarrier(ctx->inter_comm, &req2);
+    while (true) {
+      ucp_worker_progress(ctx->ucp_worker);
+      MPI_Test(&req2, &flag, MPI_STATUS_IGNORE);
+      if (flag) {
+        break;
+      }
+    }
+  }
+}
+
 DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCFinalizeContext")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
   ContextRef ctx = args[0];
@@ -89,6 +122,7 @@ DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCFinalizeContext")
     }
     ucp_request_free(stat);
   }
+  sync_all_proc(ctx);
   ucp_worker_destroy(ctx->ucp_worker);
   ucp_cleanup(ctx->ucp_context);
   MPI_Finalize();
@@ -293,6 +327,11 @@ static inline void recv_manager_context(ContextRef ctx) {
             << "remote_size=" << ctx->remote_size;
 }
 
+static void ep_err_cb(void *arg, ucp_ep_h ep, ucs_status_t status)
+{
+  Context* ctx = reinterpret_cast<Context*>(arg);
+  LOG(INFO) << "endpoint error " << ucs_status_string(status);
+}
 static inline void recv_manager_address(ContextRef ctx) {
   size_t addr_len;
   ucs_status_t status;
@@ -302,9 +341,15 @@ static inline void recv_manager_address(ContextRef ctx) {
   MPI_Bcast(&buffer[0], addr_len * ctx->remote_size, MPI_BYTE, 0, ctx->inter_comm);
   for (int32_t rank = 0; rank < ctx->remote_size; rank++) {
     ucp_ep_params_t ep_params = {
-      .field_mask = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS | UCP_EP_PARAM_FIELD_ERR_HANDLING_MODE,
+      .field_mask = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS |
+                    UCP_EP_PARAM_FIELD_ERR_HANDLING_MODE |
+                    UCP_EP_PARAM_FIELD_ERR_HANDLER,
       .address = reinterpret_cast<ucp_address_t *>(&buffer[addr_len * rank]),
       .err_mode = UCP_ERR_HANDLING_MODE_PEER,
+      .err_handler = {
+        .cb = ep_err_cb,
+        .arg = reinterpret_cast<void*>(ctx.sptr().get()),
+      }
     };
     status = ucp_ep_create(ctx->ucp_worker, &ep_params, &ctx->remote_ep[rank]);
     if (status != UCS_OK) {
