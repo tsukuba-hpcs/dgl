@@ -9,6 +9,7 @@
 #include <dgl/runtime/container.h>
 #include <dgl/packed_func_ext.h>
 #include <memory>
+#include <utility>
 
 #include "../c_api_common.h"
 

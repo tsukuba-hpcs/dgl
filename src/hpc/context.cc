@@ -5,7 +5,6 @@
  */
 
 #include "context.h"
-#include "shard.h"
 
 #include <dgl/runtime/container.h>
 #include <dgl/packed_func_ext.h>
@@ -16,6 +15,7 @@
 #include <string>
 
 #include "../c_api_common.h"
+#include "shard.h"
 
 
 
@@ -218,7 +218,6 @@ static inline void recv_manager_address(ContextRef ctx) {
 }
 
 static inline void recv_manager_shard() {
-
 }
 
 DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCWorkerConnect")
