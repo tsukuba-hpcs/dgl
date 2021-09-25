@@ -26,7 +26,8 @@ struct Context : public runtime::Object {
   MPI_Comm inter_comm;
   int32_t remote_rank;  // for worker only
   int32_t remote_size;
-  std::vector<ucp_ep_h> remote_ep;
+  std::vector<ucp_ep_h> remote_ep;  // for worker only
+  std::vector<ucp_mem_h> register_mem;  // for manager only
 
   static constexpr const char* _type_key = "hpc.Context";
   DGL_DECLARE_OBJECT_TYPE_INFO(Context, runtime::Object);

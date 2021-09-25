@@ -64,6 +64,9 @@ DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCCreateContext")
 DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCFinalizeContext")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
   ContextRef ctx = args[0];
+  for (ucp_mem_h &mem : ctx->register_mem) {
+    ucp_mem_unmap(ctx->ucp_context, mem);
+  }
   for (ucp_ep_h &ep : ctx->remote_ep) {
     ucp_ep_destroy(ep);
   }
@@ -149,6 +152,33 @@ static inline void bcast_manager_address(ContextRef ctx) {
   ucp_worker_release_address(ctx->ucp_worker, addr);
 }
 
+static inline void register_shard(ContextRef ctx, shard::ShardRef shard, void** rkeys, size_t *rkeys_len) {
+  ucs_status_t status;
+  ctx->register_mem.resize(shard->tensor.size());
+  for (int i = 0; i < static_cast<int>(shard->tensor.size()); i++) {
+    size_t byte_length = shard->tensor[i]->dtype.bits % 8;
+    for (int j = 0; j < shard->tensor[i]->ndim; j++) {
+      byte_length *= shard->tensor[i]->shape[j];
+    }
+    ucp_mem_map_params mem_params = {
+      .field_mask = UCP_MEM_MAP_PARAM_FIELD_ADDRESS | UCP_MEM_MAP_PARAM_FIELD_LENGTH,
+      .address = shard->tensor[i]->data,
+      .length = byte_length,
+    };
+    status = ucp_mem_map(ctx->ucp_context, &mem_params, &ctx->register_mem[i]);
+    if (status != UCS_OK) {
+      LOG(FATAL) << "rank=" << ctx->rank << " " 
+                 << "tensor_id=" << i << " "
+                 << "ucp_mem_map failed with" << ucs_status_string(status);
+    }
+    status = ucp_rkey_pack(ctx->ucp_context, ctx->register_mem[i], &rkeys[i], &rkeys_len[i]);
+    if (status != UCS_OK) {
+      LOG(FATAL) << "rank=" << ctx->rank << " " 
+                 << "tensor_id=" << i << " "
+                 << "ucp_rkey_pack failed with" << ucs_status_string(status);
+    }
+  }
+}
 
 static inline void bcast_manager_shard(ContextRef ctx, shard::ShardRef shard) {
   int size = shard->tensor.size();
@@ -191,6 +221,9 @@ DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCManagerServe")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
   ContextRef ctx = args[0];
   shard::ShardRef shard = args[1];
+  std::vector<void*> rkeys(shard->tensor.size());
+  std::vector<size_t> rkeys_len(shard->tensor.size());
+  register_shard(ctx, shard, &rkeys[0], &rkeys_len[0]);
   bcast_manager_context(ctx);
   bcast_manager_address(ctx);
   bcast_manager_shard(ctx, shard);
