@@ -102,7 +102,7 @@ DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCFinalizeContext")
   for (ucp_mem_h &mem : ctx->register_mem) {
     status = ucp_mem_unmap(ctx->ucp_context, mem);
     if (status != UCS_OK) {
-      LOG(FATAL) << "ucp_mem_unmap failed with " << ucs_status_string(status); 
+      LOG(FATAL) << "ucp_mem_unmap failed with " << ucs_status_string(status);
     }
   }
   std::vector<ucs_status_ptr_t> stats;
@@ -327,11 +327,12 @@ static inline void recv_manager_context(ContextRef ctx) {
             << "remote_size=" << ctx->remote_size;
 }
 
-static void ep_err_cb(void *arg, ucp_ep_h ep, ucs_status_t status)
-{
+static void ep_err_cb(void *arg, ucp_ep_h ep, ucs_status_t status) {
   Context* ctx = reinterpret_cast<Context*>(arg);
   LOG(INFO) << "endpoint error " << ucs_status_string(status);
 }
+
+
 static inline void recv_manager_address(ContextRef ctx) {
   size_t addr_len;
   ucs_status_t status;
