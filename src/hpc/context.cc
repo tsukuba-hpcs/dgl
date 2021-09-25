@@ -152,7 +152,8 @@ static inline void bcast_manager_address(ContextRef ctx) {
   ucp_worker_release_address(ctx->ucp_worker, addr);
 }
 
-static inline void register_shard(ContextRef ctx, shard::ShardRef shard, void** rkeys, size_t *rkeys_len) {
+static inline void register_shard(ContextRef ctx, shard::ShardRef shard,
+  void** rkeys, size_t *rkeys_len) {
   ucs_status_t status;
   ctx->register_mem.resize(shard->tensor.size());
   for (int i = 0; i < static_cast<int>(shard->tensor.size()); i++) {
@@ -167,13 +168,13 @@ static inline void register_shard(ContextRef ctx, shard::ShardRef shard, void** 
     };
     status = ucp_mem_map(ctx->ucp_context, &mem_params, &ctx->register_mem[i]);
     if (status != UCS_OK) {
-      LOG(FATAL) << "rank=" << ctx->rank << " " 
+      LOG(FATAL) << "rank=" << ctx->rank << " "
                  << "tensor_id=" << i << " "
                  << "ucp_mem_map failed with" << ucs_status_string(status);
     }
     status = ucp_rkey_pack(ctx->ucp_context, ctx->register_mem[i], &rkeys[i], &rkeys_len[i]);
     if (status != UCS_OK) {
-      LOG(FATAL) << "rank=" << ctx->rank << " " 
+      LOG(FATAL) << "rank=" << ctx->rank << " "
                  << "tensor_id=" << i << " "
                  << "ucp_rkey_pack failed with" << ucs_status_string(status);
     }
