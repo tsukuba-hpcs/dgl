@@ -149,6 +149,7 @@ static inline void bcast_manager_address(ContextRef ctx) {
   ucp_worker_release_address(ctx->ucp_worker, addr);
 }
 
+
 static inline void bcast_manager_shard(ContextRef ctx, shard::ShardRef shard) {
   int size = shard->tensor.size();
   if (static_cast<int>(shard->name2id.size()) != size) {
@@ -158,6 +159,9 @@ static inline void bcast_manager_shard(ContextRef ctx, shard::ShardRef shard) {
   std::vector<char> name;
   bool found;
   int name_len;
+  DLDataType dtype;
+  int ndim;
+  std::vector<int64_t> shape;
   for (int id = 0; id < size; id++) {
     found = false;
     for (auto kv : shard->name2id) {
@@ -174,6 +178,12 @@ static inline void bcast_manager_shard(ContextRef ctx, shard::ShardRef shard) {
     name_len = name.size();
     MPI_Bcast(&name_len, 1, MPI_INT, MPI_ROOT, ctx->inter_comm);
     MPI_Bcast(&name[0], name_len, MPI_CHAR, MPI_ROOT, ctx->inter_comm);
+    std::memcpy(&dtype, &shard->tensor[id]->dtype, sizeof(DLDataType));
+    ndim = shard->tensor[id]->ndim;
+    shape.assign(shard->tensor[id]->shape, shard->tensor[id]->shape + ndim);
+    MPI_Bcast(&dtype, sizeof(DLDataType), MPI_BYTE, MPI_ROOT, ctx->inter_comm);
+    MPI_Bcast(&ndim, 1, MPI_INT, MPI_ROOT, ctx->inter_comm);
+    MPI_Bcast(&shape[0], ndim, MPI_INT64_T, MPI_ROOT, ctx->inter_comm);
   }
 }
 
@@ -223,13 +233,21 @@ static inline void recv_manager_shard(ContextRef ctx, shard::ShardClientRef clie
   int name_len;
   std::vector<char> buffer;
   MPI_Bcast(&size, 1, MPI_INT, 0, ctx->inter_comm);
+  client->metadata.resize(size);
   for (int id = 0; id < size; id++) {
     MPI_Bcast(&name_len, 1, MPI_INT, 0, ctx->inter_comm);
     buffer.resize(name_len);
     MPI_Bcast(&buffer[0], name_len, MPI_CHAR, 0, ctx->inter_comm);
     std::string name(buffer.begin(), buffer.end());
-    LOG(INFO) << "id=" << id << " name=" << name;
     client->name2id[name] = id;
+    MPI_Bcast(&client->metadata[id].dtype, sizeof(DLDataType), MPI_BYTE, 0, ctx->inter_comm);
+    MPI_Bcast(&client->metadata[id].ndim, 1, MPI_INT, 0, ctx->inter_comm);
+    client->metadata[id].shape.resize(client->metadata[id].ndim);
+    MPI_Bcast(&client->metadata[id].shape[0],
+      client->metadata[id].ndim, MPI_INT64_T, 0, ctx->inter_comm);
+    LOG(INFO) << "id=" << id << " "
+              << "name=" << name << " "
+              << "ndim=" << client->metadata[id].ndim;
   }
 }
 
