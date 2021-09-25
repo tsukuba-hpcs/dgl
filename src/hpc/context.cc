@@ -217,6 +217,12 @@ static inline void bcast_manager_shard(ContextRef ctx, shard::ShardRef shard) {
   }
 }
 
+static inline void release_rkeys(ContextRef ctx, shard::ShardRef shard, void** rkeys) {
+  for (int i = 0; i < static_cast<int>(shard->tensor.size()); i++) {
+    ucp_rkey_buffer_release(rkeys[i]);
+  }
+}
+
 DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCManagerServe")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
   ContextRef ctx = args[0];
@@ -224,6 +230,7 @@ DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCManagerServe")
   std::vector<void*> rkeys(shard->tensor.size());
   std::vector<size_t> rkeys_len(shard->tensor.size());
   register_shard(ctx, shard, &rkeys[0], &rkeys_len[0]);
+  release_rkeys(ctx, shard, &rkeys[0]);
   bcast_manager_context(ctx);
   bcast_manager_address(ctx);
   bcast_manager_shard(ctx, shard);
