@@ -6,6 +6,7 @@ from .._ffi.function import _init_api
 from .._ffi.ndarray import empty
 from typing import Tuple, Callable, Type
 from dgl import backend as F
+from traceback import print_tb
 
 __all__ = ['ShardPolicy', 'ModuloPolicy', 'Shard', 'ShardClient', 'TensorShard']
 
@@ -123,13 +124,20 @@ class Shard(ObjectBase):
   _tensor: list[F.tensor]
 
   def __init__(self, rank: int, size: int):
-    self.__init_handle_by_constructor__(
-      _CAPI_HPCCreateShard
-    )
     self._rank = rank
     self._size = size
     self._tensor = []
-  
+
+  def __enter__(self):
+    self.__init_handle_by_constructor__(
+      _CAPI_HPCCreateShard
+    )
+    return self
+
+  def __exit__(self, type, value, traceback):
+    print('Shard exit with', type, value)
+    print_tb(traceback)
+
   def createTensor(self, name: str, shape: Tuple[int, ...], dtype: Type[F.dtype],
   policy: Type[ShardPolicy]) -> TensorShard:
     (row_size, *col_sizes) = shape
