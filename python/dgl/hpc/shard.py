@@ -46,12 +46,14 @@ class ModuloPolicy(ShardPolicy):
 class Shard(ObjectBase):
   rank: int
   size: int
+  tensor: list[F.tensor]
   def __init__(self, rank: int, size: int):
     self.__init_handle_by_constructor__(
       _CAPI_HPCCreateShard
     )
     self.rank = rank
     self.size = size
+    self.tensor = []
 
 @register_object('hpc.ShardClient')
 class ShardClient(ObjectBase):
@@ -64,18 +66,69 @@ class ShardClient(ObjectBase):
     return 0
 
 class TensorShard:
-  id: int
-  name: str
-  shape: Tuple[int, ...]
-  dtype: Type[F.dtype]
-  policy: ShardPolicy
+  _id: int
+  _name: str
+  _shape: Tuple[int, ...]
+  _dtype: Type[F.dtype]
+  _local_tensor: F.tensor
+  _policy: ShardPolicy
   def __init__(self, id: int, name: str, shape: Tuple[int, ...], dtype: Type[F.dtype],
-    policy: ShardPolicy):
-    self.id = id
-    self.name = name
-    self.shape = shape
-    self.dtype = dtype
-    self.policy = policy
+    local_tensor: F.tensor, policy: ShardPolicy):
+    self._id = id
+    self._name = name
+    self._shape = shape
+    self._dtype = dtype
+    self._local_tensor = local_tensor
+    self._policy = policy
+
+  @property
+  def id(self):
+    return self._id
+
+  @id.setter
+  def id(self, value):
+    raise ValueError(value, "Reassignment is not allowed")
+
+  @property
+  def name(self):
+    return self._name
+  
+  @name.setter
+  def name(self, value):
+    raise ValueError(value, "Reassignment is not allowed")
+
+  @property
+  def shape(self):
+    return self._shape
+  
+  @shape.setter
+  def shape(self, value):
+    raise ValueError(value, "Reassignment is not allowed")
+
+  @property
+  def dtype(self):
+    return self._dtype
+  
+  @dtype.setter
+  def dtype(self, value):
+    raise ValueError(value, "Reassignment is not allowed")
+
+  @property
+  def local_tensor(self):
+    return self._local_tensor
+
+  @local_tensor.setter
+  def local_tensor(self, value):
+    raise ValueError(value, "Reassignment is not allowed")
+
+  @property
+  def policy(self):
+    return self._policy
+
+  @policy.setter
+  def policy(self, value):
+    raise ValueError(value, "Reassignment is not allowed")
+
 
 def createTensor(shard: Shard, name: str, shape: Tuple[int, ...], dtype: Type[F.dtype],
   policy: Type[ShardPolicy]) -> TensorShard:
@@ -84,6 +137,9 @@ def createTensor(shard: Shard, name: str, shape: Tuple[int, ...], dtype: Type[F.
   local_shape = (sp.get_local_row_size(shard.rank), *col_sizes)
   tensor = empty(local_shape, F.reverse_data_type_dict[dtype])
   id = _CAPI_HPCRegisterTensor(shard, name, tensor)
-  return TensorShard(id, name, shape, dtype, sp)
+  assert len(shard.tensor) == id, "number of stored tensor is not equal"
+  dlpack = tensor.to_dlpack()
+  shard.tensor.append(F.zerocopy_from_dlpack(dlpack))
+  return TensorShard(id, name, shape, dtype, shard.tensor[id], sp)
 
 _init_api("dgl.hpc.shard")
