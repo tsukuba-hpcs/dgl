@@ -39,9 +39,17 @@ class ManagerContext:
   def rank(self) -> int:
     return self.context.rank
 
+  @rank.setter
+  def rank(self, value):
+    raise ValueError(value, "Reassignment is not allowed")
+
   @property
   def size(self) -> int:
     return self.context.size
+
+  @size.setter
+  def size(self, value):
+    raise ValueError(value, "Reassignment is not allowed")
 
   def launchWorker(self, num_workers: int=1, py: str = "python", worker: str = "worker.py", *args: str):
     assert not self.launched, "cannot launch worker twice."
@@ -69,8 +77,16 @@ class WorkerContext:
   def rank(self) -> int:
     return self.context.rank
 
+  @rank.setter
+  def rank(self, value):
+    raise ValueError(value, "Reassignment is not allowed")
+
   @property
   def size(self) -> int:
     return self.context.size
+
+  @size.setter
+  def size(self, value):
+    raise ValueError(value, "Reassignment is not allowed")
 
 _init_api("dgl.hpc.context")

@@ -7,7 +7,7 @@ from .._ffi.ndarray import empty
 from typing import Tuple, Callable, Type
 from dgl import backend as F
 
-__all__ = ['ShardPolicy', 'ModuloPolicy', 'Shard', 'ShardClient', 'createTensor', 'TensorShard']
+__all__ = ['ShardPolicy', 'ModuloPolicy', 'Shard', 'ShardClient', 'TensorShard']
 
 class ShardPolicy(ABC):
   row_size: int
@@ -41,19 +41,6 @@ class ModuloPolicy(ShardPolicy):
     a = self.row_size // self.manager_size
     b = 1 if rank < self.row_size % self.manager_size else 0
     return a + b
-
-@register_object('hpc.Shard')
-class Shard(ObjectBase):
-  rank: int
-  size: int
-  tensor: list[F.tensor]
-  def __init__(self, rank: int, size: int):
-    self.__init_handle_by_constructor__(
-      _CAPI_HPCCreateShard
-    )
-    self.rank = rank
-    self.size = size
-    self.tensor = []
 
 @register_object('hpc.ShardClient')
 class ShardClient(ObjectBase):
@@ -129,17 +116,31 @@ class TensorShard:
   def policy(self, value):
     raise ValueError(value, "Reassignment is not allowed")
 
+@register_object('hpc.Shard')
+class Shard(ObjectBase):
+  _rank: int
+  _size: int
+  _tensor: list[F.tensor]
 
-def createTensor(shard: Shard, name: str, shape: Tuple[int, ...], dtype: Type[F.dtype],
+  def __init__(self, rank: int, size: int):
+    self.__init_handle_by_constructor__(
+      _CAPI_HPCCreateShard
+    )
+    self._rank = rank
+    self._size = size
+    self._tensor = []
+  
+  def createTensor(self, name: str, shape: Tuple[int, ...], dtype: Type[F.dtype],
   policy: Type[ShardPolicy]) -> TensorShard:
-  (row_size, *col_sizes) = shape
-  sp: ShardPolicy = policy(row_size, shard.size)
-  local_shape = (sp.get_local_row_size(shard.rank), *col_sizes)
-  tensor = empty(local_shape, F.reverse_data_type_dict[dtype])
-  id = _CAPI_HPCRegisterTensor(shard, name, tensor)
-  assert len(shard.tensor) == id, "number of stored tensor is not equal"
-  dlpack = tensor.to_dlpack()
-  shard.tensor.append(F.zerocopy_from_dlpack(dlpack))
-  return TensorShard(id, name, shape, dtype, shard.tensor[id], sp)
+    (row_size, *col_sizes) = shape
+    sp: ShardPolicy = policy(row_size, self._size)
+    local_shape = (sp.get_local_row_size(self._rank), *col_sizes)
+    tensor = empty(local_shape, F.reverse_data_type_dict[dtype])
+    id = _CAPI_HPCRegisterTensor(self, name, tensor)
+    assert len(self._tensor) == id, "number of stored tensor is not equal"
+    dlpack = tensor.to_dlpack()
+    self._tensor.append(F.zerocopy_from_dlpack(dlpack))
+    return TensorShard(id, name, shape, dtype, self._tensor[id], sp)
+
 
 _init_api("dgl.hpc.shard")
