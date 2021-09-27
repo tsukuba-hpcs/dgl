@@ -39,14 +39,17 @@ DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCCreateContext")
     LOG(FATAL) << "MPI is already Initialized";
   }
   MPI_Init(NULL, NULL);
-  std::shared_ptr<Context> rst(new Context);
-  MPI_Comm_rank(MPI_COMM_WORLD, &rst->rank);
-  MPI_Comm_size(MPI_COMM_WORLD, &rst->size);
+  std::shared_ptr<Context> ctx(new Context);
+  MPI_Comm_rank(MPI_COMM_WORLD, &ctx->rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &ctx->size);
+  ctx->inter_comm = MPI_COMM_WORLD;
+  ctx->remote_rank = -1;
+  ctx->remote_size = 0;
   ucp_params_t ucp_params = {
     .field_mask = UCP_PARAM_FIELD_FEATURES,
     .features = UCP_FEATURE_RMA,
   };
-  status = ucp_init(&ucp_params, NULL, &rst->ucp_context);
+  status = ucp_init(&ucp_params, NULL, &ctx->ucp_context);
   if (status != UCS_OK) {
     LOG(FATAL) << "ucp_init failed with " << ucs_status_string(status);
   }
@@ -54,12 +57,12 @@ DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCCreateContext")
     .field_mask = UCP_WORKER_PARAM_FIELD_THREAD_MODE,
     .thread_mode = UCS_THREAD_MODE_SINGLE,
   };
-  status = ucp_worker_create(rst->ucp_context,
-    &worker_params, &rst->ucp_worker);
+  status = ucp_worker_create(ctx->ucp_context,
+    &worker_params, &ctx->ucp_worker);
   if (status != UCS_OK) {
     LOG(FATAL) << "ucp_worker_create failed with " << ucs_status_string(status);
   }
-  *rv = rst;
+  *rv = ctx;
 });
 
 static inline void sync_all_proc(ContextRef ctx) {
@@ -169,7 +172,6 @@ DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCManagerLaunchWorker")
     worker_args.push_back(arg);
   }
   spawn_worker(&ctx->inter_comm, num_workers, worker_args);
-  ctx->remote_rank = -1;
   ctx->remote_size = num_workers;
 });
 
