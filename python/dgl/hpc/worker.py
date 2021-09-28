@@ -35,4 +35,11 @@ class ShardClient(ObjectBase):
         print('ShardClient exit with', type, value)
         print_tb(traceback)
 
+    def getMetadata(self, name: str):
+        id = _CAPI_HPCGetTensorIDFromName(self, name)
+        print(name, "id is", id)
+        shapeList = _CAPI_HPCGetTensorShapeFromID(self, id)
+        shape = tuple(shapeList)
+        print(name, "shape is", shape)
+
 _init_api("dgl.hpc.worker")

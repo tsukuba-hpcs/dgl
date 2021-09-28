@@ -148,6 +148,29 @@ DGL_REGISTER_GLOBAL("hpc.worker._CAPI_HPCFinalizeShardClient")
   }
 });
 
+DGL_REGISTER_GLOBAL("hpc.worker._CAPI_HPCGetTensorIDFromName")
+.set_body([] (DGLArgs args, DGLRetValue* rv) {
+  ShardClientRef client = args[0];
+  std::string name = args[1];
+  if (client->name2id.count(name) == 0) {
+    LOG(FATAL) << "name=" << name << " is not found";
+  }
+  int id = client->name2id[name];
+  *rv = id;
+});
+
+DGL_REGISTER_GLOBAL("hpc.worker._CAPI_HPCGetTensorShapeFromID")
+.set_body([] (DGLArgs args, DGLRetValue* rv) {
+  ShardClientRef client = args[0];
+  int id = args[1];
+  List<Value> ret;
+  for (int d = 0; d < client->metadata[id].ndim; d++) {
+    ret.push_back(Value(MakeValue(client->metadata[id].shape[d])));
+  }
+  *rv = ret;
+});
+
+
 }  // namespace worker
 }  // namespace hpc
 }  // namespace dgl

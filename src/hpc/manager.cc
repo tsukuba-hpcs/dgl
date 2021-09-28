@@ -152,7 +152,6 @@ static inline void bcast_manager_shard(context::ContextRef ctx, ShardRef shard,
       if (kv.second == id) {
         found = true;
         name = std::vector<char>(kv.first.begin(), kv.first.end());
-        name.push_back('\0');
         break;
       }
     }
