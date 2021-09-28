@@ -174,6 +174,12 @@ DGL_REGISTER_GLOBAL("hpc.worker._CAPI_HPCGetTensorShapeFromID")
   *rv = ret;
 });
 
+DGL_REGISTER_GLOBAL("hpc.worker._CAPI_HPCGetTensorDtypeFromID")
+.set_body([] (DGLArgs args, DGLRetValue* rv) {
+  ShardClientRef client = args[0];
+  int id = args[1];
+  *rv = client->metadata[id].dtype;
+});
 
 }  // namespace worker
 }  // namespace hpc

@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from .._ffi.object import register_object, ObjectBase
 from .._ffi.function import _init_api
 from .._ffi.ndarray import empty
-from typing import Tuple, Callable, Type
+from typing import Tuple, Type
 from dgl import backend as F
 from traceback import print_tb
 from .._ffi.function import _init_api
@@ -50,7 +50,7 @@ class TensorShard:
     _id: int
     _name: str
     _shape: Tuple[int, ...]
-    _dtype: Type[F.dtype]
+    _dtype: F.dtype
     _local_tensor: F.tensor
     _policy: ShardPolicy
     def __init__(self, id: int, name: str, shape: Tuple[int, ...], dtype: Type[F.dtype],
