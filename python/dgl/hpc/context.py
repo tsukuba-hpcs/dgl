@@ -8,29 +8,29 @@ __all__ = ['Context']
 
 @register_object('hpc.Context')
 class Context(ObjectBase):
-  """
-  DGL's HPC Context.
-  """
+    """
+    DGL's HPC Context.
+    """
 
-  @property
-  def rank(self) -> int:
-    return _CAPI_HPCContextGetRank(self)
+    @property
+    def rank(self) -> int:
+        return _CAPI_HPCContextGetRank(self)
 
-  @rank.setter
-  def rank(self, value):
-    raise ValueError(value, "Reassignment is not allowed")
+    @rank.setter
+    def rank(self, value):
+        raise ValueError(value, "Reassignment is not allowed")
 
-  @property
-  def size(self) -> int:
-    return _CAPI_HPCContextGetSize(self)
+    @property
+    def size(self) -> int:
+        return _CAPI_HPCContextGetSize(self)
 
-  def __enter__(self):
-    self.__init_handle_by_constructor__(
-      _CAPI_HPCCreateContext
-    )
+    def __enter__(self):
+        self.__init_handle_by_constructor__(
+            _CAPI_HPCCreateContext
+        )
 
-  def __exit__(self, type, value, traceback):
-    _CAPI_HPCFinalizeContext(self)
+    def __exit__(self, type, value, traceback):
+        _CAPI_HPCFinalizeContext(self)
 
 
 _init_api("dgl.hpc.context")
