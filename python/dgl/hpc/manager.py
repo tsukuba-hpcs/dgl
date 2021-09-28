@@ -1,4 +1,4 @@
-"""HPC Shard"""
+from .context import Context
 
 from abc import ABC, abstractmethod
 from .._ffi.object import register_object, ObjectBase
@@ -7,8 +7,10 @@ from .._ffi.ndarray import empty
 from typing import Tuple, Callable, Type
 from dgl import backend as F
 from traceback import print_tb
+from .._ffi.function import _init_api
 
-__all__ = ['ShardPolicy', 'ModuloPolicy', 'Shard', 'ShardClient', 'TensorShard']
+__all__ = ['ShardPolicy', 'ModuloPolicy', 'Shard', 'TensorShard', 'ManagerContext']
+
 
 class ShardPolicy(ABC):
   row_size: int
@@ -28,6 +30,7 @@ class ShardPolicy(ABC):
   def get_local_row_size(self, rank: int) -> int:
     pass
 
+
 class ModuloPolicy(ShardPolicy):
 
   def __init__(self, row_size: int, manager_size: int):
@@ -42,16 +45,6 @@ class ModuloPolicy(ShardPolicy):
     a = self.row_size // self.manager_size
     b = 1 if rank < self.row_size % self.manager_size else 0
     return a + b
-
-@register_object('hpc.ShardClient')
-class ShardClient(ObjectBase):
-  def __init__(self):
-    self.__init_handle_by_constructor__(
-      _CAPI_HPCCreateShardClient
-    )
-
-  def get_id(self, name: str) -> int:
-    return 0
 
 class TensorShard:
   _id: int
@@ -151,4 +144,29 @@ class Shard(ObjectBase):
     return TensorShard(id, name, shape, dtype, self._tensor[id], sp)
 
 
-_init_api("dgl.hpc.shard")
+class ManagerContext(Context):
+  """
+  DGL's HPC ManagerContext.
+  """
+  def __init__(self):
+    super().__init__()
+    self._launched = False
+
+  def __enter__(self):
+    super().__enter__()
+    return self
+
+  def __exit__(self, type, value, traceback):
+    super().__exit__(type, value, traceback)
+    print('ManagerContext exit with', type, value)
+
+  def launchWorker(self, num_workers: int=1, py: str = "python", worker: str = "worker.py", *args: str):
+    assert not self._launched, "cannot launch worker twice."
+    self._launched = True
+    _CAPI_HPCManagerLaunchWorker(self, num_workers, py, worker, *args)
+
+  def serve(self, shard: Shard):
+    assert self._launched, "must launch worker."
+    _CAPI_HPCManagerServe(self, shard)
+
+_init_api("dgl.hpc.manager")

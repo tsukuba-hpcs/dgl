@@ -1,11 +1,11 @@
 /*!
  *  Copyright (c) 2021 by Contributors
- * \file hpc/shard.h
- * \brief headers for HPC shard.
+ * \file hpc/client.h
+ * \brief headers for HPC client.
  */
 
-#ifndef DGL_HPC_SHARD_H_
-#define DGL_HPC_SHARD_H_
+#ifndef DGL_HPC_WORKER_H_
+#define DGL_HPC_WORKER_H_
 
 #include <ucp/api/ucp.h>
 
@@ -18,18 +18,8 @@
 
 namespace dgl {
 namespace hpc {
-namespace shard {
+namespace worker {
 
-
-struct Shard : public runtime::Object {
-  std::unordered_map<std::string, int> name2id;
-  std::vector<runtime::NDArray> tensor;
-
-  static constexpr const char* _type_key = "hpc.Shard";
-  DGL_DECLARE_OBJECT_TYPE_INFO(Shard, runtime::Object);
-};
-
-DGL_DEFINE_OBJECT_REF(ShardRef, Shard);
 
 struct TensorMetaData {
   DGLType dtype;
@@ -49,8 +39,8 @@ struct ShardClient : public runtime::Object {
 
 DGL_DEFINE_OBJECT_REF(ShardClientRef, ShardClient);
 
-}  // namespace shard
+}  // namespace worker
 }  // namespace hpc
 }  // namespace dgl
 
-#endif  // DGL_HPC_SHARD_H_
+#endif  // DGL_HPC_WORKER_H_
