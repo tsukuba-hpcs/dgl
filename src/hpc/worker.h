@@ -23,8 +23,8 @@ namespace worker {
 
 struct TensorMetaData {
   DGLType dtype;
-  int ndim;
-  std::vector<int64_t> shape;
+  int col_ndim;
+  std::vector<int64_t> col_shape;
   std::vector<void*> data;
   std::vector<ucp_rkey_h> rkeys;
 };

@@ -87,13 +87,17 @@ static inline void recv_shard_metadata(context::ContextRef ctx, ShardClientRef c
     std::string name(name_buffer.begin(), name_buffer.end());
     client->name2id[name] = id;
     MPI_Bcast(&client->metadata[id].dtype, sizeof(DGLType), MPI_BYTE, 0, ctx->inter_comm);
-    MPI_Bcast(&client->metadata[id].ndim, 1, MPI_INT, 0, ctx->inter_comm);
-    client->metadata[id].shape.resize(client->metadata[id].ndim);
-    MPI_Bcast(&client->metadata[id].shape[0],
-      client->metadata[id].ndim, MPI_INT64_T, 0, ctx->inter_comm);
+    MPI_Bcast(&client->metadata[id].col_ndim, 1, MPI_INT, 0, ctx->inter_comm);
+    if (client->metadata[id].col_ndim > 0) {
+      client->metadata[id].col_shape.resize(client->metadata[id].col_ndim);
+      MPI_Bcast(&client->metadata[id].col_shape[0],
+        client->metadata[id].col_ndim, MPI_INT64_T, 0, ctx->inter_comm);
+    } else {
+      client->metadata[id].col_shape.clear();
+    }
     LOG(INFO) << "id=" << id << " "
               << "name=" << name << " "
-              << "ndim=" << client->metadata[id].ndim;
+              << "col_ndim=" << client->metadata[id].col_ndim;
     MPI_Bcast(&rkeys_len_total, 1, MPI_INT64_T, 0, ctx->inter_comm);
     rkeys_buffer_total.resize(rkeys_len_total);
     MPI_Bcast(&displs[0], ctx->remote_size, MPI_INT, 0, ctx->inter_comm);
@@ -164,8 +168,8 @@ DGL_REGISTER_GLOBAL("hpc.worker._CAPI_HPCGetTensorShapeFromID")
   ShardClientRef client = args[0];
   int id = args[1];
   List<Value> ret;
-  for (int d = 0; d < client->metadata[id].ndim; d++) {
-    ret.push_back(Value(MakeValue(client->metadata[id].shape[d])));
+  for (int d = 0; d < client->metadata[id].col_ndim; d++) {
+    ret.push_back(Value(MakeValue(client->metadata[id].col_shape[d])));
   }
   *rv = ret;
 });

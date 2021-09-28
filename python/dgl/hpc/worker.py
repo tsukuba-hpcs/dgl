@@ -38,8 +38,8 @@ class ShardClient(ObjectBase):
     def getMetadata(self, name: str):
         id = _CAPI_HPCGetTensorIDFromName(self, name)
         print(name, "id is", id)
-        shapeList = _CAPI_HPCGetTensorShapeFromID(self, id)
-        shape = tuple(shapeList)
-        print(name, "shape is", shape)
+        colshapeList = _CAPI_HPCGetTensorShapeFromID(self, id)
+        colshape = tuple(colshapeList)
+        print(name, "col_shape is", colshape)
 
 _init_api("dgl.hpc.worker")

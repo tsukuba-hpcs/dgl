@@ -130,8 +130,8 @@ static inline void bcast_manager_shard(context::ContextRef ctx, ShardRef shard,
   bool found;
   int name_len;
   DLDataType dtype;
-  int ndim;
-  std::vector<int64_t> shape;
+  int col_ndim;
+  std::vector<int64_t> col_shape;
   int64_t rkey_len, rkeys_len_total;
   std::vector<char> rkeys_buffer_total;
   std::vector<int> recvcounts(ctx->size), displs(ctx->size);
@@ -140,8 +140,8 @@ static inline void bcast_manager_shard(context::ContextRef ctx, ShardRef shard,
   // for each tensor, broadcast these data.
   // 1. name
   // 2. dtype
-  // 3. ndim
-  // 4. shape
+  // 3. col_ndim
+  // 4. col_shape
   // 5. rkeys total length (rkey is used for RDMA Read/Write to buffer)
   // 6. displs (offset of buffer) for each manager's rkey
   // 7. rkeys (rank=k manager's rkey is rkeys[displs[k]])
@@ -162,11 +162,16 @@ static inline void bcast_manager_shard(context::ContextRef ctx, ShardRef shard,
     MPI_Bcast(&name_len, 1, MPI_INT, MPI_ROOT, ctx->inter_comm);
     MPI_Bcast(&name[0], name_len, MPI_CHAR, MPI_ROOT, ctx->inter_comm);
     std::memcpy(&dtype, &shard->tensor[id]->dtype, sizeof(DLDataType));
-    ndim = shard->tensor[id]->ndim;
-    shape.assign(shard->tensor[id]->shape, shard->tensor[id]->shape + ndim);
     MPI_Bcast(&dtype, sizeof(DGLType), MPI_BYTE, MPI_ROOT, ctx->inter_comm);
-    MPI_Bcast(&ndim, 1, MPI_INT, MPI_ROOT, ctx->inter_comm);
-    MPI_Bcast(&shape[0], ndim, MPI_INT64_T, MPI_ROOT, ctx->inter_comm);
+    if (shard->tensor[id]->ndim <= 1) {
+      col_ndim = 0;
+      MPI_Bcast(&col_ndim, 1, MPI_INT, MPI_ROOT, ctx->inter_comm);
+    } else {
+      col_ndim = shard->tensor[id]->ndim - 1;
+      col_shape.assign(shard->tensor[id]->shape + 1, shard->tensor[id]->shape + 1 + col_ndim);
+      MPI_Bcast(&col_ndim, 1, MPI_INT, MPI_ROOT, ctx->inter_comm);
+      MPI_Bcast(&col_shape[0], col_ndim, MPI_INT64_T, MPI_ROOT, ctx->inter_comm);
+    }
     rkey_len = static_cast<int64_t>(rkeys_len[id]);
     MPI_Allreduce(&rkey_len, &rkeys_len_total, 1, MPI_INT64_T, MPI_SUM, MPI_COMM_WORLD);
     rkeys_buffer_total.resize(rkeys_len_total);
