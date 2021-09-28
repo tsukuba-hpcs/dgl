@@ -27,6 +27,8 @@ class ShardClient(ObjectBase):
     self.__init_handle_by_constructor__(
       _CAPI_HPCCreateShardClient
     )
+    _CAPI_HPCWorkerRecvMetadata(self._wcontext, self)
+    return self
 
   def __exit__(self, type, value, traceback):
    _CAPI_HPCFinalizeShardClient(self)
