@@ -194,7 +194,7 @@ SlicePool::SlicePool(int pool_size, const TensorMetaData *metadata) :
   for (int i = 0; i < pool_size; i++) {
     NDArray s = NDArray::Empty(metadata->col_shape, metadata->dtype,
       DLContext{DLDeviceType::kDLCPU, 0});
-    slice.push_back(std::move(s));
+    buffer.push_back(std::move(s));
   }
 }
 
@@ -204,12 +204,23 @@ NDArray* SlicePool::alloc() {
     if (!used[cur]) {
       used[cur] = true;
       head = (cur + 1) % pool_size;
-      return &slice[cur];
+      return &buffer[cur];
     }
     cur = (cur + 1) % pool_size;
   } while (cur != head);
   LOG(FATAL) << "SlicePool alloc() failed";
   return NULL;
+}
+
+void SlicePool::release(NDArray slice) {
+  for (int cur = 0; cur < pool_size; cur++) {
+    if (!used[cur]) continue;
+    if (buffer[cur]->data == slice->data) {
+      used[cur] = false;
+      return;
+    }
+  }
+  LOG(FATAL) << "invalid buffer cannnot be released";
 }
 
 DGL_REGISTER_GLOBAL("hpc.worker._CAPI_HPCAllocSlicePool")
@@ -240,6 +251,14 @@ DGL_REGISTER_GLOBAL("hpc.worker._CAPI_HPCFetchSlice")
     LOG(FATAL) << "ucp_get failed";
   }
   *rv = *buffer;
+});
+
+DGL_REGISTER_GLOBAL("hpc.worker._CAPI_HPCReleaseSlice")
+.set_body([] (DGLArgs args, DGLRetValue* rv) {
+  ShardClientRef client = args[0];
+  int id = args[1];
+  NDArray slice = args[2];
+  client->pool[id].release(std::move(slice));
 });
 
 }  // namespace worker

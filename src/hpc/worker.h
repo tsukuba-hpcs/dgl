@@ -36,10 +36,11 @@ struct SlicePool {
   int pool_size;
   int head;
   const TensorMetaData *metadata;
-  std::vector<NDArray> slice;
+  std::vector<NDArray> buffer;
   std::vector<bool> used;
   SlicePool(int pool_size, const TensorMetaData *metadata);
   NDArray* alloc();
+  void release(NDArray slice);
 };
 
 struct ShardClient : public runtime::Object {

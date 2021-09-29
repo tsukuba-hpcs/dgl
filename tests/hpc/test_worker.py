@@ -6,4 +6,4 @@ if __name__ == "__main__":
             foo = client.getMetadata("foo")
             print(vars(foo))
             fooslice = client.fetchSlice(foo, 0, 0)
-            print('fooslice', fooslice)
+            print('fooslice', fooslice.tensor)

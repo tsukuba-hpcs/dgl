@@ -1,6 +1,8 @@
+from __future__ import annotations
 from .context import Context
 from dgl import backend as F
 from typing import Tuple, Type
+from dgl.ndarray import NDArray
 from .._ffi.object import register_object, ObjectBase
 from traceback import print_tb
 from .._ffi.function import _init_api
@@ -40,6 +42,22 @@ class TensorClient:
         raise ValueError(value, "Reassignment is not allowed")
 
 
+class TensorSlice:
+    _client: ShardClient
+    _tc: TensorClient
+    _ndarray: NDArray
+    tensor: F.tensor
+
+    def __init__(self, client: ShardClient, tc: TensorClient, ndarray: NDArray):
+        self._client = client
+        self._tc = tc
+        self._ndarray = ndarray
+        self.tensor =  F.zerocopy_from_dgl_ndarray(ndarray)
+
+    def __del__(self):
+        _CAPI_HPCReleaseSlice(self._client, self._tc.id, self._ndarray)
+
+
 @register_object('hpc.ShardClient')
 class ShardClient(ObjectBase):
     def __init__(self, wcontext: WorkerContext):
@@ -65,8 +83,9 @@ class ShardClient(ObjectBase):
         colshape = tuple(colshapeList)
         return TensorClient(id, F.data_type_dict[dtype], colshape)
 
-    def fetchSlice(self, tc: TensorClient, rank, row) -> F.tensor:
+    def fetchSlice(self, tc: TensorClient, rank, row) -> TensorSlice:
         tensor = _CAPI_HPCFetchSlice(self._wcontext, self, tc.id, rank, row)
-        return F.zerocopy_from_dgl_ndarray(tensor)
+        return TensorSlice(self, tc, tensor)
+
 
 _init_api("dgl.hpc.worker")
