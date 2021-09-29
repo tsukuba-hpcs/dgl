@@ -73,25 +73,35 @@ void barrier(ContextRef ctx, MPI_Comm comm) {
 }
 
 static inline void sync_all_proc(ContextRef ctx) {
-  MPI_Request req1, req2;
+  MPI_Request req1, req2, req3;
   int flag;
   // If Manager
   if (ctx->remote_rank < 0) {
-    MPI_Ibarrier(MPI_COMM_WORLD, &req1);
+    MPI_Ibarrier(ctx->inter_comm, &req1);
     do {
       ucp_worker_progress(ctx->ucp_worker);
       MPI_Test(&req1, &flag, MPI_STATUS_IGNORE);
     } while (!flag);
-    MPI_Ibarrier(ctx->inter_comm, &req2);
+    MPI_Ibarrier(MPI_COMM_WORLD, &req2);
     do {
       ucp_worker_progress(ctx->ucp_worker);
       MPI_Test(&req2, &flag, MPI_STATUS_IGNORE);
     } while (!flag);
-  } else {
-    MPI_Ibarrier(ctx->inter_comm, &req2);
+    MPI_Ibarrier(ctx->inter_comm, &req3);
     do {
       ucp_worker_progress(ctx->ucp_worker);
-      MPI_Test(&req2, &flag, MPI_STATUS_IGNORE);
+      MPI_Test(&req3, &flag, MPI_STATUS_IGNORE);
+    } while (!flag);
+  } else {
+    MPI_Ibarrier(ctx->inter_comm, &req1);
+    do {
+      ucp_worker_progress(ctx->ucp_worker);
+      MPI_Test(&req1, &flag, MPI_STATUS_IGNORE);
+    } while (!flag);
+    MPI_Ibarrier(ctx->inter_comm, &req3);
+    do {
+      ucp_worker_progress(ctx->ucp_worker);
+      MPI_Test(&req3, &flag, MPI_STATUS_IGNORE);
     } while (!flag);
   }
 }
