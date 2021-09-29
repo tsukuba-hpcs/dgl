@@ -19,7 +19,7 @@ class WorkerContext(Context):
 
     def __exit__(self, type, value, traceback):
         super().__exit__(type, value, traceback)
-        print('WorkerContext exit with', type, value)
+        print('WorkerContext exit with', 'type=', type, 'value=', value)
 
 class TensorClient:
     _id: int
@@ -55,7 +55,7 @@ class ShardClient(ObjectBase):
 
     def __exit__(self, type, value, traceback):
         _CAPI_HPCFinalizeShardClient(self)
-        print('ShardClient exit with', type, value)
+        print('ShardClient exit with', 'type=', type, 'value=', value)
         print_tb(traceback)
 
     def getMetadata(self, name: str) -> TensorClient:

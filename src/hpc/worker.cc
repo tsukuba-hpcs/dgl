@@ -32,8 +32,6 @@ static inline void recv_manager_context(context::ContextRef ctx) {
   context::barrier(ctx, ctx->inter_comm);
   MPI_Bcast(&ctx->remote_rank, 1, MPI_INT32_T, 0, ctx->inter_comm);
   MPI_Bcast(&ctx->remote_size, 1, MPI_INT32_T, 0, ctx->inter_comm);
-  LOG(INFO) << "remote_rank=" << ctx->remote_rank << " "
-            << "remote_size=" << ctx->remote_size;
 }
 
 static void ep_err_cb(void *arg, ucp_ep_h ep, ucs_status_t status) {
@@ -102,9 +100,6 @@ static inline void recv_shard_metadata(context::ContextRef ctx, ShardClientRef c
       client->metadata[id].col_shape[0] = 1;
       client->metadata[id].row_length = client->metadata[id].dtype.bits / 8;
     }
-    LOG(INFO) << "id=" << id << " "
-              << "name=" << name << " "
-              << "col_ndim=" << client->metadata[id].col_ndim;
     MPI_Bcast(&rkeys_len_total, 1, MPI_INT64_T, 0, ctx->inter_comm);
     rkeys_buffer_total.resize(rkeys_len_total);
     MPI_Bcast(&displs[0], ctx->remote_size, MPI_INT, 0, ctx->inter_comm);
@@ -136,7 +131,6 @@ DGL_REGISTER_GLOBAL("hpc.worker._CAPI_HPCWorkerConnect")
 DGL_REGISTER_GLOBAL("hpc.worker._CAPI_HPCCreateShardClient")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
   std::shared_ptr<ShardClient> rst(new ShardClient);
-  LOG(INFO) << "CreateShardClient called";
   *rv = rst;
 });
 

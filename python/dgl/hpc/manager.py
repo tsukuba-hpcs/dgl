@@ -128,7 +128,7 @@ class Shard(ObjectBase):
         return self
 
     def __exit__(self, type, value, traceback):
-        print('Shard exit with', type, value)
+        print('Shard exit with', 'type=', type, 'value=', value)
         print_tb(traceback)
 
     def createTensor(self, name: str, shape: Tuple[int, ...], dtype: Type[F.dtype],
@@ -158,7 +158,7 @@ class ManagerContext(Context):
 
     def __exit__(self, type, value, traceback):
         super().__exit__(type, value, traceback)
-        print('ManagerContext exit with', type, value)
+        print('ManagerContext exit with', 'type=', type, 'value=', value)
 
     def launchWorker(self, num_workers: int=1, py: str = "python", worker: str = "worker.py", *args: str):
         assert not self._launched, "cannot launch worker twice."

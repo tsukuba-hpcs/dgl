@@ -81,7 +81,6 @@ static inline void bcast_manager_address(context::ContextRef ctx) {
   if (status != UCS_OK) {
     LOG(FATAL) << "ucp_worker_get_address failed with " << ucs_status_string(status);
   }
-  LOG(INFO) << "ucp address length=" << addr_len;
   context::barrier(ctx, MPI_COMM_WORLD);
   MPI_Bcast(&addr_len, sizeof(size_t), MPI_BYTE, MPI_ROOT, ctx->inter_comm);
   std::vector<char> buffer(addr_len * ctx->size);
@@ -211,7 +210,6 @@ DGL_REGISTER_GLOBAL("hpc.manager._CAPI_HPCManagerServe")
 DGL_REGISTER_GLOBAL("hpc.manager._CAPI_HPCCreateShard")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
   std::shared_ptr<Shard> rst(new Shard);
-  LOG(INFO) << "CreateShard called";
   *rv = rst;
 });
 
