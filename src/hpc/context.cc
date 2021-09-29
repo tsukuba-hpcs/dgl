@@ -62,6 +62,16 @@ DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCCreateContext")
   *rv = ctx;
 });
 
+void barrier(ContextRef ctx, MPI_Comm comm) {
+  MPI_Request req;
+  int flag;
+  MPI_Ibarrier(comm, &req);
+  do {
+    ucp_worker_progress(ctx->ucp_worker);
+    MPI_Test(&req, &flag, MPI_STATUS_IGNORE);
+  } while (!flag);
+}
+
 static inline void sync_all_proc(ContextRef ctx) {
   MPI_Request req1, req2;
   int flag;
@@ -88,9 +98,9 @@ static inline void sync_all_proc(ContextRef ctx) {
 
 DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCFinalizeContext")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
-  LOG(INFO) << "Begin _CAPI_HPCFinalizeContext";
   ContextRef ctx = args[0];
   ucs_status_t status;
+  sync_all_proc(ctx);
   for (ucp_mem_h &mem : ctx->register_mem) {
     status = ucp_mem_unmap(ctx->ucp_context, mem);
     if (status != UCS_OK) {
@@ -98,8 +108,9 @@ DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCFinalizeContext")
     }
   }
   std::vector<ucs_status_ptr_t> stats;
+  ucp_request_param_t params = {0};
   for (ucp_ep_h &ep : ctx->remote_ep) {
-    stats.push_back(ucp_ep_close_nb(ep, UCP_EP_CLOSE_MODE_FLUSH));
+    stats.push_back(ucp_ep_close_nbx(ep, &params));
   }
   for (ucs_status_ptr_t &stat : stats) {
     if (UCS_PTR_IS_ERR(stat)) {
@@ -115,8 +126,6 @@ DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCFinalizeContext")
       ucp_request_free(stat);
     }
   }
-  LOG(INFO) << "begin sync_all_proc";
-  sync_all_proc(ctx);
   ucp_worker_destroy(ctx->ucp_worker);
   ucp_cleanup(ctx->ucp_context);
   MPI_Finalize();

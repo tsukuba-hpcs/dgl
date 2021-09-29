@@ -35,6 +35,8 @@ struct Context : public runtime::Object {
 
 DGL_DEFINE_OBJECT_REF(ContextRef, Context);
 
+void barrier(ContextRef ctx, MPI_Comm comm);
+
 }  // namespace context
 }  // namespace hpc
 }  // namespace dgl

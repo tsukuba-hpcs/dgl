@@ -29,7 +29,7 @@ using namespace dgl::runtime;
 //////////////////////////// Context ////////////////////////////
 
 static inline void recv_manager_context(context::ContextRef ctx) {
-  MPI_Barrier(ctx->inter_comm);
+  context::barrier(ctx, ctx->inter_comm);
   MPI_Bcast(&ctx->remote_rank, 1, MPI_INT32_T, 0, ctx->inter_comm);
   MPI_Bcast(&ctx->remote_size, 1, MPI_INT32_T, 0, ctx->inter_comm);
   LOG(INFO) << "remote_rank=" << ctx->remote_rank << " "

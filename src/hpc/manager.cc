@@ -68,7 +68,7 @@ DGL_REGISTER_GLOBAL("hpc.manager._CAPI_HPCManagerLaunchWorker")
 });
 
 static inline void bcast_manager_context(context::ContextRef ctx) {
-  MPI_Barrier(ctx->inter_comm);
+  context::barrier(ctx, ctx->inter_comm);
   MPI_Bcast(&ctx->rank, 1, MPI_INT32_T, MPI_ROOT, ctx->inter_comm);
   MPI_Bcast(&ctx->size, 1, MPI_INT32_T, MPI_ROOT, ctx->inter_comm);
 }
@@ -82,7 +82,7 @@ static inline void bcast_manager_address(context::ContextRef ctx) {
     LOG(FATAL) << "ucp_worker_get_address failed with " << ucs_status_string(status);
   }
   LOG(INFO) << "ucp address length=" << addr_len;
-  MPI_Barrier(MPI_COMM_WORLD);
+  context::barrier(ctx, MPI_COMM_WORLD);
   MPI_Bcast(&addr_len, sizeof(size_t), MPI_BYTE, MPI_ROOT, ctx->inter_comm);
   std::vector<char> buffer(addr_len * ctx->size);
   MPI_Allgather(addr, addr_len, MPI_BYTE, &buffer[0], addr_len, MPI_BYTE, MPI_COMM_WORLD);
