@@ -95,7 +95,7 @@ static inline void register_shard(context::ContextRef ctx, ShardRef shard,
   ucs_status_t status;
   ctx->register_mem.resize(shard->tensor.size());
   for (int id = 0; id < static_cast<int>(shard->tensor.size()); id++) {
-    size_t byte_length = shard->tensor[id]->dtype.bits % 8;
+    size_t byte_length = shard->tensor[id]->dtype.bits / 8;
     for (int j = 0; j < shard->tensor[id]->ndim; j++) {
       byte_length *= shard->tensor[id]->shape[j];
     }

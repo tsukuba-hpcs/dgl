@@ -88,6 +88,7 @@ static inline void sync_all_proc(ContextRef ctx) {
 
 DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCFinalizeContext")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
+  LOG(INFO) << "Begin _CAPI_HPCFinalizeContext";
   ContextRef ctx = args[0];
   ucs_status_t status;
   for (ucp_mem_h &mem : ctx->register_mem) {
@@ -97,22 +98,24 @@ DGL_REGISTER_GLOBAL("hpc.context._CAPI_HPCFinalizeContext")
     }
   }
   std::vector<ucs_status_ptr_t> stats;
-  ucp_request_param_t rparams = {
-    .op_attr_mask = 0,
-  };
   for (ucp_ep_h &ep : ctx->remote_ep) {
-    stats.push_back(ucp_ep_close_nbx(ep, &rparams));
+    stats.push_back(ucp_ep_close_nb(ep, UCP_EP_CLOSE_MODE_FLUSH));
   }
   for (ucs_status_ptr_t &stat : stats) {
     if (UCS_PTR_IS_ERR(stat)) {
-      LOG(FATAL) << "ucp ep close failed with "
-                 << ucs_status_string(UCS_PTR_STATUS(stat));
+      LOG(FATAL) << "ucp ep close failed";
     }
-    while (ucp_request_check_status(stat) == UCS_INPROGRESS) {
-      ucp_worker_progress(ctx->ucp_worker);
+    if (stat && UCS_PTR_IS_PTR(stat)) {
+      do {
+        ucp_worker_progress(ctx->ucp_worker);
+        status = UCS_PTR_STATUS(stat);
+      } while (status == UCS_INPROGRESS && stat);
     }
-    ucp_request_free(stat);
+    if (stat) {
+      ucp_request_free(stat);
+    }
   }
+  LOG(INFO) << "begin sync_all_proc";
   sync_all_proc(ctx);
   ucp_worker_destroy(ctx->ucp_worker);
   ucp_cleanup(ctx->ucp_context);

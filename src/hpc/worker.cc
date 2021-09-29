@@ -7,6 +7,7 @@
 #include <mpi.h>
 
 #include <dgl/runtime/container.h>
+#include <dgl/runtime/ndarray.h>
 #include <dgl/packed_func_ext.h>
 
 #include <memory>
@@ -92,8 +93,14 @@ static inline void recv_shard_metadata(context::ContextRef ctx, ShardClientRef c
       client->metadata[id].col_shape.resize(client->metadata[id].col_ndim);
       MPI_Bcast(&client->metadata[id].col_shape[0],
         client->metadata[id].col_ndim, MPI_INT64_T, 0, ctx->inter_comm);
+      client->metadata[id].row_length = client->metadata[id].dtype.bits / 8;
+      for (int len : client->metadata[id].col_shape) {
+        client->metadata[id].row_length *= len;
+      }
     } else {
-      client->metadata[id].col_shape.clear();
+      client->metadata[id].col_shape.resize(1);
+      client->metadata[id].col_shape[0] = 1;
+      client->metadata[id].row_length = client->metadata[id].dtype.bits / 8;
     }
     LOG(INFO) << "id=" << id << " "
               << "name=" << name << " "
@@ -179,6 +186,66 @@ DGL_REGISTER_GLOBAL("hpc.worker._CAPI_HPCGetTensorDtypeFromID")
   ShardClientRef client = args[0];
   int id = args[1];
   *rv = client->metadata[id].dtype;
+});
+
+
+//////////////////////////// SlicePool ////////////////////////
+
+SlicePool::SlicePool(int pool_size, const TensorMetaData *metadata) :
+  pool_size(pool_size), head(0), metadata(metadata) {
+  if (pool_size <= 0) {
+    LOG(FATAL) << "pool_size=" << pool_size << " is invalid";
+  }
+  used.assign(pool_size, false);
+  for (int i = 0; i < pool_size; i++) {
+    NDArray s = NDArray::Empty(metadata->col_shape, metadata->dtype,
+      DLContext{DLDeviceType::kDLCPU, 0});
+    slice.push_back(std::move(s));
+  }
+}
+
+NDArray* SlicePool::alloc() {
+  int cur = head;
+  do {
+    if (!used[cur]) {
+      used[cur] = true;
+      head = (cur + 1) % pool_size;
+      return &slice[cur];
+    }
+    cur = (cur + 1) % pool_size;
+  } while (cur != head);
+  LOG(FATAL) << "SlicePool alloc() failed";
+  return NULL;
+}
+
+DGL_REGISTER_GLOBAL("hpc.worker._CAPI_HPCAllocSlicePool")
+.set_body([] (DGLArgs args, DGLRetValue* rv) {
+  ShardClientRef client = args[0];
+  int pool_size = args[1];
+  for (int id = 0; id < client->name2id.size(); id++) {
+    client->pool.emplace_back(pool_size, &client->metadata[id]);
+  }
+});
+
+DGL_REGISTER_GLOBAL("hpc.worker._CAPI_HPCFetchSlice")
+.set_body([] (DGLArgs args, DGLRetValue* rv) {
+  context::ContextRef ctx = args[0];
+  ShardClientRef client = args[1];
+  int id = args[2];
+  int rank = args[3];
+  int row = args[4];
+  NDArray *buffer = client->pool[id].alloc();
+  ucs_status_t stat;
+  size_t row_length = client->metadata[id].row_length;
+  stat = ucp_get(ctx->remote_ep[rank],
+    buffer->ToDLPack()->dl_tensor.data,
+    row_length,
+    (uint64_t)client->metadata[id].data[rank] + row * row_length,
+    client->metadata[id].rkeys[rank]);
+  if (stat != UCS_OK) {
+    LOG(FATAL) << "ucp_get failed";
+  }
+  *rv = *buffer;
 });
 
 }  // namespace worker

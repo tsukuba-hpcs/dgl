@@ -17,12 +17,14 @@ namespace dgl {
 namespace hpc {
 namespace manager {
 
+using namespace dgl::runtime;
+
 struct Shard : public runtime::Object {
   std::unordered_map<std::string, int> name2id;
-  std::vector<runtime::NDArray> tensor;
+  std::vector<NDArray> tensor;
 
   static constexpr const char* _type_key = "hpc.manager.Shard";
-  DGL_DECLARE_OBJECT_TYPE_INFO(Shard, runtime::Object);
+  DGL_DECLARE_OBJECT_TYPE_INFO(Shard, Object);
 };
 
 DGL_DEFINE_OBJECT_REF(ShardRef, Shard);

@@ -15,11 +15,13 @@
 #include <unordered_map>
 #include <string>
 #include <vector>
+#include <memory>
 
 namespace dgl {
 namespace hpc {
 namespace worker {
 
+using namespace dgl::runtime;
 
 struct TensorMetaData {
   DGLType dtype;
@@ -27,14 +29,26 @@ struct TensorMetaData {
   std::vector<int64_t> col_shape;
   std::vector<void*> data;
   std::vector<ucp_rkey_h> rkeys;
+  size_t row_length;
+};
+
+struct SlicePool {
+  int pool_size;
+  int head;
+  const TensorMetaData *metadata;
+  std::vector<NDArray> slice;
+  std::vector<bool> used;
+  SlicePool(int pool_size, const TensorMetaData *metadata);
+  NDArray* alloc();
 };
 
 struct ShardClient : public runtime::Object {
   std::unordered_map<std::string, int> name2id;
   std::vector<TensorMetaData> metadata;
+  std::vector<SlicePool> pool;
 
   static constexpr const char* _type_key = "hpc.ShardClient";
-  DGL_DECLARE_OBJECT_TYPE_INFO(ShardClient, runtime::Object);
+  DGL_DECLARE_OBJECT_TYPE_INFO(ShardClient, Object);
 };
 
 DGL_DEFINE_OBJECT_REF(ShardClientRef, ShardClient);
