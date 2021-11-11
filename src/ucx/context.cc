@@ -35,13 +35,30 @@ DGL_REGISTER_GLOBAL("distributedv2.context._CAPI_UCXCreateContext")
   if ((status = ucp_worker_create(ctx->ucp_context, &wparams, &ctx->ucp_worker)) != UCS_OK) {
     LOG(FATAL) << "ucp_worker_create error: " << ucs_status_string(status);
   }
+  if ((status = ucp_worker_get_address(ctx->ucp_worker, &ctx->addr, &ctx->addrlen)) != UCS_OK) {
+    LOG(FATAL) << "ucp_worker_get_address error: " << ucs_status_string(status);
+  }
   *rv = ctx;
+});
+
+DGL_REGISTER_GLOBAL("distributedv2.context._CAPI_UCXGetWorkerAddr")
+.set_body([] (DGLArgs args, DGLRetValue* rv) {
+  ContextRef ctx = args[0];
+  *rv = ctx->addr;
+});
+
+DGL_REGISTER_GLOBAL("distributedv2.context._CAPI_UCXGetWorkerAddrlen")
+.set_body([] (DGLArgs args, DGLRetValue* rv) {
+  ContextRef ctx = args[0];
+  int len = static_cast<int>(ctx->addrlen);
+  *rv = len;
 });
 
 DGL_REGISTER_GLOBAL("distributedv2.context._CAPI_UCXFinalizeContext")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
   ContextRef ctx = args[0];
   LOG(INFO) << "_CAPI_UCXFinalizeContext is called";
+  ucp_worker_release_address(ctx->ucp_worker, ctx->addr);
   ucp_worker_destroy(ctx->ucp_worker);
   ucp_cleanup(ctx->ucp_context);
 });

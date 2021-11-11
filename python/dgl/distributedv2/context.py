@@ -1,4 +1,5 @@
 from mpi4py import MPI
+from ctypes import *
 from .._ffi.object import register_object, ObjectBase
 from .._ffi.function import _init_api
 
@@ -15,6 +16,11 @@ class Context(ObjectBase):
             rank,
             size
         )
+        addr = _CAPI_UCXGetWorkerAddr(self)
+        print('addr=', addr)
+        len = _CAPI_UCXGetWorkerAddrlen(self)
+        print('addrlen=', len)
+
     def __del__(self):
         _CAPI_UCXFinalizeContext(self)
 

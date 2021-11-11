@@ -22,7 +22,8 @@ struct Context: public runtime::Object {
   int32_t size;
   ucp_context_h ucp_context;
   ucp_worker_h ucp_worker;
-
+  ucp_address_t* addr;
+  size_t addrlen;
   static constexpr const char* _type_key = "ucx.Context";
   DGL_DECLARE_OBJECT_TYPE_INFO(Context, runtime::Object);
 };
