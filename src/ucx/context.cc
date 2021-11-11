@@ -28,6 +28,13 @@ DGL_REGISTER_GLOBAL("distributedv2.context._CAPI_UCXCreateContext")
   if ((status = ucp_init(&params, NULL, &ctx->ucp_context)) != UCS_OK) {
     LOG(FATAL) << "ucp_init error: " << ucs_status_string(status);
   }
+  ucp_worker_params_t wparams = {
+    .field_mask = UCP_WORKER_PARAM_FIELD_THREAD_MODE,
+    .thread_mode = UCS_THREAD_MODE_SERIALIZED,
+  };
+  if ((status = ucp_worker_create(ctx->ucp_context, &wparams, &ctx->ucp_worker)) != UCS_OK) {
+    LOG(FATAL) << "ucp_worker_create error: " << ucs_status_string(status);
+  }
   *rv = ctx;
 });
 
@@ -35,6 +42,7 @@ DGL_REGISTER_GLOBAL("distributedv2.context._CAPI_UCXFinalizeContext")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
   ContextRef ctx = args[0];
   LOG(INFO) << "_CAPI_UCXFinalizeContext is called";
+  ucp_worker_destroy(ctx->ucp_worker);
   ucp_cleanup(ctx->ucp_context);
 });
 
