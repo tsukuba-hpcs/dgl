@@ -35,6 +35,7 @@ dgl_option(LIBCXX_ENABLE_PARALLEL_ALGORITHMS "Enable the parallel algorithms lib
 dgl_option(USE_S3 "Build with S3 support" OFF)
 dgl_option(USE_HDFS "Build with HDFS support" OFF) # Set env HADOOP_HDFS_HOME if needed
 dgl_option(USE_EPOLL "Build with epoll for socket communicator" OFF)
+dgl_option(USE_UCX "Build with UCX" ON)
 
 # Set debug compile option for gdb, only happens when -DCMAKE_BUILD_TYPE=DEBUG
 if (NOT MSVC)
@@ -187,6 +188,20 @@ if(USE_CUDA)
 
   list(APPEND DGL_LINKER_LIBS ${NCCL_LIBRARY})
 endif(USE_CUDA)
+
+file(GLOB_RECURSE DGL_SRC_2
+  src/ucx/*.cc
+)
+
+if(USE_UCX)
+  message(STATUS "Build with UCX.")
+  list(APPEND DGL_SRC ${DGL_SRC_2})
+  find_package(PkgConfig)
+  pkg_check_modules(UCX REQUIRED ucx)
+  include_directories(${UCX_INCLUDE_DIRS})
+  list(APPEND DGL_LINKER_LIBS ${UCX_LIBRARIES})
+endif(USE_UCX)
+
 
 if(USE_CUDA)
   cuda_add_library(dgl SHARED ${DGL_SRC})
