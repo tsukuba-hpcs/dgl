@@ -15,6 +15,8 @@ class Context(ObjectBase):
             rank,
             size
         )
+    def __del__(self):
+        _CAPI_UCXFinalizeContext(self)
 
 
 _init_api("dgl.distributedv2.context")
