@@ -11,7 +11,9 @@ __all__ = [
 class Context(ObjectBase):
     def __init__(self, rank: int, size: int):
         self.__init_handle_by_constructor__(
-            _CAPI_UCXCreateContext
+            _CAPI_UCXCreateContext,
+            rank,
+            size
         )
 
 
