@@ -1,8 +1,7 @@
 from mpi4py import MPI
-from ctypes import c_byte, c_ubyte, c_void_p, POINTER, cast
+from ctypes import c_ubyte, c_void_p, POINTER, cast
 from .._ffi.object import register_object, ObjectBase
 from .._ffi.function import _init_api
-from .._ffi.runtime_ctypes import DGLByteArray
 
 __all__ = [
     'Context',
