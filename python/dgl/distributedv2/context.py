@@ -1,7 +1,8 @@
 from mpi4py import MPI
-from ctypes import c_ubyte, c_void_p, POINTER, cast
+from ctypes import c_byte, c_ubyte, c_void_p, POINTER, cast
 from .._ffi.object import register_object, ObjectBase
 from .._ffi.function import _init_api
+from .._ffi.runtime_ctypes import DGLByteArray
 
 __all__ = [
     'Context',
@@ -20,6 +21,8 @@ class Context(ObjectBase):
         )
         addrs = self.__gather_workeraddr(comm)
         print(addrs)
+        self.__create_endpoints(addrs)
+
 
     def __gather_workeraddr(self, comm):
         # exchange worker address
@@ -34,6 +37,9 @@ class Context(ObjectBase):
         r_msg = [addrs, addrlen, MPI.BYTE]
         comm.Allgather(s_msg, r_msg)
         return addrs
+
+    def __create_endpoints(self, addrs):
+        _CAPI_UCXCreateEndpoints(self, addrs)
 
     def __del__(self):
         _CAPI_UCXFinalizeContext(self)

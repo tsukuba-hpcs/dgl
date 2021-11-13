@@ -54,10 +54,36 @@ DGL_REGISTER_GLOBAL("distributedv2.context._CAPI_UCXGetWorkerAddrlen")
   *rv = len;
 });
 
+DGL_REGISTER_GLOBAL("distributedv2.context._CAPI_UCXCreateEndpoints")
+.set_body([] (DGLArgs args, DGLRetValue* rv) {
+  ContextRef ctx = args[0];
+  std::string addrs = args[1];
+  CHECK(addrs.length() == ctx->size * ctx->addrlen);
+  ucs_status_t status;
+  ctx->eps.resize(ctx->size);
+  for (int rank = 0; rank != ctx->size; rank++) {
+    if (rank == ctx->rank) continue;
+    const ucp_address_t* addr =
+      reinterpret_cast<const ucp_address_t *>(&addrs[ctx->addrlen * rank]);
+    ucp_ep_params_t params = {
+      .field_mask = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS,
+      .address = addr,
+    };
+    if ((status = ucp_ep_create(ctx->ucp_worker, &params, &ctx->eps[rank])) != UCS_OK) {
+      LOG(FATAL) << "rank=" << rank
+        <<"ucp_worker_get_address error: " << ucs_status_string(status);
+    }
+  }
+});
+
 DGL_REGISTER_GLOBAL("distributedv2.context._CAPI_UCXFinalizeContext")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
   ContextRef ctx = args[0];
   LOG(INFO) << "_CAPI_UCXFinalizeContext is called";
+  for (int rank = 0; rank != ctx->size; rank++) {
+    if (rank == ctx->rank) continue;
+    ucp_ep_destroy(ctx->eps[rank]);
+  }
   ucp_worker_release_address(ctx->ucp_worker, ctx->addr);
   ucp_worker_destroy(ctx->ucp_worker);
   ucp_cleanup(ctx->ucp_context);
