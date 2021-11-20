@@ -7,7 +7,7 @@ namespace dgl {
 namespace ucx {
 namespace service {
 
-GraphServer::GraphServer( GraphRef g)
+GraphServer::GraphServer(GraphRef g)
   : local_graph(g) {
 }
 
