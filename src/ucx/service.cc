@@ -54,14 +54,14 @@ int ServiceManager::deserialize(EndpointState *estate) {
         if (estate->ss.rdbuf()->in_avail() < estate->len) {
           return 0;
         }
-        estate->sstate = StreamState::PARITY;
+        estate->sstate = StreamState::TERM;
         return 1;
-      case StreamState::PARITY:
-        if (estate->ss.rdbuf()->in_avail() < sizeof(stream_parity_t)) {
+      case StreamState::TERM:
+        if (estate->ss.rdbuf()->in_avail() < sizeof(stream_term_t)) {
           return 0;
         }
-        estate->ss.readsome(buf, sizeof(stream_parity_t));
-        CHECK(*(stream_parity_t *)buf == PARITY);
+        estate->ss.readsome(buf, sizeof(stream_term_t));
+        CHECK(*(stream_term_t *)buf == TERM);
         estate->sstate = StreamState::LEN;
         break;
     }

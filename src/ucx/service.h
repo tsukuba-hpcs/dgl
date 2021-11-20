@@ -40,7 +40,7 @@ enum StreamState {
   LEN = 0,     /* length    ,   2 byte */
   SID = 1,     /* service id,   1 byte */
   CONTENT = 2, /* content   , len byte */
-  PARITY = 3,  /* parity    ,   1 byte */
+  TERM = 3,    /* term      ,   1 byte */
 };
 
 struct EndpointState {
@@ -60,12 +60,12 @@ struct EndpointState {
 class ServiceManager {
   using stream_len_t = uint16_t;
   using stream_sid_t = char;
-  using stream_parity_t = char;
+  using stream_term_t = char;
   constexpr static int BUFFER_LEN = std::max(
     sizeof(stream_len_t),
     sizeof(stream_sid_t),
-  sizeof(stream_parity_t));
-  constexpr static stream_parity_t PARITY = 0x77;
+    sizeof(stream_term_t));
+  constexpr static stream_term_t TERM = 0x77;
   std::vector<std::unique_ptr<Service>> servs;
   std::vector<EndpointState> ep_states;
   std::atomic_bool shutdown;
