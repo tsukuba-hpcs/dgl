@@ -1,26 +1,29 @@
 #include "service.h"
+#include "context.h"
 
 #include <ucp/api/ucp.h>
 #include <sstream>
 
 namespace dgl {
-namespace ucx {
-namespace service {
+namespace distributedv2 {
+
 
 GraphServer::GraphServer(GraphRef g)
   : local_graph(g) {
 }
 
-void GraphServer::recv(context::Context *ctx, EndpointState *estate) {
+void GraphServer::recv(Communicator *comm, EndpointState *estate) {
 
 }
 
-void GraphServer::tick(context::Context *ctx) {
+void GraphServer::progress(Communicator *comm) {
 
 }
 
-ServiceManager::ServiceManager(int size)
-  : shutdown(false) {
+ServiceManager::ServiceManager(int rank, int size)
+  : shutdown(false)
+  , rank(rank)
+  , size(size) {
   for(int rank = 0; rank < size; rank++) {
     ep_states.emplace_back(rank);
   }
@@ -31,23 +34,25 @@ void ServiceManager::add_service(std::unique_ptr<Service> serv) {
 }
 
 int ServiceManager::deserialize(EndpointState *estate) {
-  char buf[BUFFER_LEN];
+  char len_buf[sizeof(stream_len_t)];
+  char sid_buf[sizeof(stream_sid_t)];
+  char term_buf[sizeof(stream_term_t)];
   while (1) {
     switch (estate->sstate) {
       case StreamState::LEN:
         if (estate->ss.rdbuf()->in_avail() < sizeof(stream_len_t)) {
           return 0;
         }
-        estate->ss.readsome(buf, sizeof(stream_len_t));
-        estate->len = *(stream_len_t *)buf;
+        estate->ss.readsome(len_buf, sizeof(stream_len_t));
+        estate->len = *(stream_len_t *)len_buf;
         estate->sstate = StreamState::SID;
         break;
       case StreamState::SID:
         if (estate->ss.rdbuf()->in_avail() < sizeof(stream_sid_t)) {
           return 0;
         }
-        estate->ss.readsome(buf, sizeof(stream_sid_t));
-        estate->sid = *(stream_sid_t *)buf;
+        estate->ss.readsome(sid_buf, sizeof(stream_sid_t));
+        estate->sid = *(stream_sid_t *)sid_buf;
         estate->sstate = StreamState::CONTENT;
         break;
       case StreamState::CONTENT:
@@ -60,36 +65,32 @@ int ServiceManager::deserialize(EndpointState *estate) {
         if (estate->ss.rdbuf()->in_avail() < sizeof(stream_term_t)) {
           return 0;
         }
-        estate->ss.readsome(buf, sizeof(stream_term_t));
-        CHECK(*(stream_term_t *)buf == TERM);
+        estate->ss.readsome(term_buf, sizeof(stream_term_t));
+        CHECK(*(stream_term_t *)term_buf == TERM);
         estate->sstate = StreamState::LEN;
         break;
     }
   }
 }
 
-void ServiceManager::run(context::Context *ctx) {
+void ServiceManager::run(Communicator *comm, ServiceManager *self) {
   size_t length;
   ucs_status_ptr_t stat;
-  while (!ctx->manager.shutdown) {
-    for (size_t rank = 0; rank < ctx->eps.size(); rank++) {
-      if (rank == ctx->rank) continue;
-      stat = ucp_stream_recv_data_nb(ctx->eps[rank], &length);
-      if (length == 0 || stat == NULL) continue;
-      EndpointState *estate = &ctx->manager.ep_states[rank];
-      estate->ss.write(reinterpret_cast<const char*>(stat), length);
-      ucp_stream_data_release(ctx->eps[rank], stat);
+  while (!self->shutdown) {
+    for (size_t srcrank = 0; srcrank < self->size; srcrank++) {
+      if (srcrank == self->rank) continue;
+      EndpointState *estate = &self->ep_states[srcrank];
+      comm->get_data(srcrank, &estate->ss);
       while (deserialize(estate)) {
-        ctx->manager.servs[estate->sid]->recv(ctx, estate);
+        self->servs[estate->sid]->recv(comm, estate);
       }
     }
-    for (auto &serv: ctx->manager.servs) {
-      serv->tick(ctx);
+    for (auto &serv: self->servs) {
+      serv->progress(comm);
     }
-    ucp_worker_progress(ctx->ucp_worker);
+    comm->progress();
   }
 }
 
-}
 }
 }

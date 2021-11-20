@@ -190,7 +190,7 @@ if(USE_CUDA)
 endif(USE_CUDA)
 
 file(GLOB_RECURSE DGL_SRC_2
-  src/ucx/*.cc
+  src/distributedv2/*.cc
 )
 
 if(USE_UCX)

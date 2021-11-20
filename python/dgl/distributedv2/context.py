@@ -8,13 +8,13 @@ __all__ = [
 ]
 
 
-@register_object('ucx.Context')
+@register_object('distributedv2.Context')
 class Context(ObjectBase):
     def __init__(self, comm = MPI.COMM_WORLD):
         rank = comm.Get_rank()
         size = comm.Get_size()
         self.__init_handle_by_constructor__(
-            _CAPI_UCXCreateContext,
+            _CAPI_DistV2CreateContext,
             rank,
             size
         )
@@ -25,8 +25,8 @@ class Context(ObjectBase):
 
     def __gather_workeraddr(self, comm):
         # exchange worker address
-        addr= _CAPI_UCXGetWorkerAddr(self)
-        addrlen = _CAPI_UCXGetWorkerAddrlen(self)
+        addr= _CAPI_DistV2GetWorkerAddr(self)
+        addrlen = _CAPI_DistV2GetWorkerAddrlen(self)
         UByteArr = c_ubyte * addrlen
         UByteArrPtr = POINTER(UByteArr)
         addr = cast(addr, UByteArrPtr)
@@ -38,10 +38,6 @@ class Context(ObjectBase):
         return addrs
 
     def __create_endpoints(self, addrs):
-        _CAPI_UCXCreateEndpoints(self, addrs)
+        _CAPI_DistV2CreateEndpoints(self, addrs)
 
-    def __del__(self):
-        _CAPI_UCXFinalizeContext(self)
-
-
-_init_api("dgl.distributedv2.context")
+_init_api("dgl.distributedv2", __name__)
