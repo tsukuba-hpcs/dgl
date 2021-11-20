@@ -11,6 +11,7 @@
 #include <dgl/runtime/object.h>
 
 #include <vector>
+#include "service.h"
 
 
 namespace dgl {
@@ -25,6 +26,7 @@ struct Context: public runtime::Object {
   ucp_address_t* addr;
   size_t addrlen;
   std::vector<ucp_ep_h> eps;
+  service::ServiceManager manager;
   static constexpr const char* _type_key = "ucx.Context";
   DGL_DECLARE_OBJECT_TYPE_INFO(Context, runtime::Object);
 };
