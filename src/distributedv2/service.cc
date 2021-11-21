@@ -71,7 +71,7 @@ int ServiceManager::deserialize(EndpointState *estate) {
         estate->sstate = StreamState::TERM;
         return 1;
       case StreamState::TERM:
-        length = estate->ss.rdbuf()->sgetn(sid_buf, sizeof(stream_term_t));
+        length = estate->ss.rdbuf()->sgetn(term_buf, sizeof(stream_term_t));
         if (length < sizeof(stream_term_t)) {
           pos = estate->ss.tellg() - length;
           estate->ss.seekg(pos);
