@@ -34,7 +34,7 @@ struct EndpointState {
   std::stringstream ss;
   EndpointState(int rank)
   : rank(rank)
-  , sstate(StreamState::SID)
+  , sstate(StreamState::LEN)
   , sid(0)
   , len(0) {
   }
@@ -55,15 +55,15 @@ public:
 };
 
 class ServiceManager {
-  using stream_len_t = uint16_t;
-  using stream_sid_t = char;
-  using stream_term_t = char;
-  const static stream_term_t TERM = 0x77;
   std::vector<std::unique_ptr<Service>> servs;
   std::vector<EndpointState> ep_states;
   std::atomic_bool shutdown;
   int rank, size;
 public:
+  using stream_len_t = uint16_t;
+  using stream_sid_t = char;
+  using stream_term_t = char;
+  const static stream_term_t TERM = 0x77;
   ServiceManager(int rank, int size);
   void add_service(std::unique_ptr<Service> serv);
   static int deserialize(EndpointState *estate);
