@@ -64,6 +64,7 @@ public:
   using stream_sid_t = char;
   using stream_term_t = char;
   const static stream_term_t TERM = 0x77;
+  const static size_t MAX_STREAM_LENGTH = 1<<28;
   ServiceManager(int rank, int size);
   void add_service(std::unique_ptr<Service> serv);
   static int deserialize(EndpointState *estate);

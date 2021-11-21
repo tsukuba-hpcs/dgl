@@ -37,37 +37,55 @@ int ServiceManager::deserialize(EndpointState *estate) {
   char len_buf[sizeof(stream_len_t)];
   char sid_buf[sizeof(stream_sid_t)];
   char term_buf[sizeof(stream_term_t)];
+  int length;
+  int pos;
   while (1) {
     switch (estate->sstate) {
       case StreamState::LEN:
-        if (estate->ss.rdbuf()->in_avail() < sizeof(stream_len_t)) {
+        length = estate->ss.rdbuf()->sgetn(len_buf, sizeof(stream_len_t));
+        if (length < sizeof(stream_len_t)) {
+          pos = estate->ss.tellg() - length;
+          estate->ss.seekg(pos);
           return 0;
         }
-        estate->ss.readsome(len_buf, sizeof(stream_len_t));
         estate->len = *(stream_len_t *)len_buf;
         estate->sstate = StreamState::SID;
         break;
       case StreamState::SID:
-        if (estate->ss.rdbuf()->in_avail() < sizeof(stream_sid_t)) {
+        length = estate->ss.rdbuf()->sgetn(sid_buf, sizeof(stream_sid_t));
+        if (length < sizeof(stream_sid_t)) {
+          pos = estate->ss.tellg() - length;
+          estate->ss.seekg(pos);
           return 0;
         }
-        estate->ss.readsome(sid_buf, sizeof(stream_sid_t));
         estate->sid = *(stream_sid_t *)sid_buf;
         estate->sstate = StreamState::CONTENT;
         break;
       case StreamState::CONTENT:
-        if (estate->ss.rdbuf()->in_avail() < estate->len) {
+        length = estate->ss.rdbuf()->sgetn(sid_buf, estate->len);
+        pos = estate->ss.tellg() - length;
+        estate->ss.seekg(pos);
+        if (length < estate->len) {
           return 0;
         }
         estate->sstate = StreamState::TERM;
         return 1;
       case StreamState::TERM:
-        if (estate->ss.rdbuf()->in_avail() < sizeof(stream_term_t)) {
+        length = estate->ss.rdbuf()->sgetn(sid_buf, sizeof(stream_term_t));
+        if (length < sizeof(stream_term_t)) {
+          pos = estate->ss.tellg() - length;
+          estate->ss.seekg(pos);
           return 0;
         }
-        estate->ss.readsome(term_buf, sizeof(stream_term_t));
         CHECK(*(stream_term_t *)term_buf == TERM);
+        pos = estate->ss.tellg();
         estate->sstate = StreamState::LEN;
+        if (pos > MAX_STREAM_LENGTH) {
+          // Garbage Collection for Stream Buffer
+          std::string str(estate->ss.str());
+          estate->ss = std::stringstream();
+          estate->ss.write(str.c_str(), str.size());
+        }
         break;
     }
   }
