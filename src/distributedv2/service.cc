@@ -1,7 +1,6 @@
 #include "service.h"
 #include "context.h"
 
-#include <ucp/api/ucp.h>
 #include <sstream>
 
 namespace dgl {
@@ -81,9 +80,10 @@ int ServiceManager::deserialize(EndpointState *estate) {
         pos = estate->ss.tellg();
         estate->sstate = StreamState::LEN;
         if (pos > MAX_STREAM_LENGTH) {
-          // Garbage Collection for Stream Buffer
+          // Reset Stream
           std::string str(estate->ss.str());
-          estate->ss = std::stringstream();
+          estate->ss.seekg(0);
+          estate->ss.seekp(0);
           estate->ss.write(str.c_str(), str.size());
         }
         break;
@@ -93,7 +93,6 @@ int ServiceManager::deserialize(EndpointState *estate) {
 
 void ServiceManager::run(Communicator *comm, ServiceManager *self) {
   size_t length;
-  ucs_status_ptr_t stat;
   while (!self->shutdown) {
     for (size_t srcrank = 0; srcrank < self->size; srcrank++) {
       if (srcrank == self->rank) continue;

@@ -25,8 +25,8 @@ TEST(DistV2DeserializeTest, STREAM_PROG) {
   ASSERT_STREQ(buf, "foobar");
 }
 
-// latency: ~1 [us/trial]
-TEST(DistV2DeserializeTest, STREAM_GC) {
+// latency: 1~2 [us/trial]
+TEST(DistV2DeserializeTest, STREAM_RESET) {
   std::stringstream ss;
   char buf[4] = {0};
   for (size_t trial = 0; trial < 100000LL; trial++) {
@@ -34,7 +34,8 @@ TEST(DistV2DeserializeTest, STREAM_GC) {
     ASSERT_EQ(ss.rdbuf()->sgetn(buf, 3), 3);
     ASSERT_STREQ(buf, "foo");
     std::string str = ss.str();
-    ss = std::stringstream();
+    ss.seekg(0);
+    ss.seekp(0);
     ss.write(str.c_str(), str.size());
   }
 }
