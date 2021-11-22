@@ -107,13 +107,13 @@ TEST(DistV2DeserializeTest, VALID2) {
   char buf2[3];
   const ServiceManager::stream_term_t term = ServiceManager::TERM;
 
-  for (size_t trial = 0; trial < 1000; trial++) {
+  for (size_t trial = 0; trial < 100000LL; trial++) {
     es.ss.write((const char *)&len, sizeof(ServiceManager::stream_len_t));
     es.ss.write((const char *)&sid, sizeof(ServiceManager::stream_sid_t));
     es.ss.write((const char *)buf, 3);
     es.ss.write((const char *)&term, sizeof(ServiceManager::stream_term_t));
   }
-  for (size_t trial = 0; trial < 1000; trial++) {
+  for (size_t trial = 0; trial < 100000LL; trial++) {
     int c = sm.deserialize(&es);
     ASSERT_EQ(c, 1);
     ASSERT_EQ(es.sid, 0);
