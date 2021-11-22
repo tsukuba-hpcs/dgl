@@ -67,6 +67,7 @@ public:
   const static size_t MAX_STREAM_LENGTH = 1<<28;
   ServiceManager(int rank, int size);
   void add_service(std::unique_ptr<Service> serv);
+  static std::string serialize(stream_sid_t sid, const char *data, stream_len_t len);
   static int deserialize(EndpointState *estate);
   static void run(Communicator *comm, ServiceManager *self);
 };

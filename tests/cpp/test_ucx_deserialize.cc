@@ -125,3 +125,24 @@ TEST(DistV2DeserializeTest, VALID2) {
   ASSERT_EQ(es.sstate, StreamState::LEN);
   ASSERT_EQ(c, 0);
 }
+
+TEST(DistV2DeserializeTest, SERIALIZE) {
+  ServiceManager sm(0, 1);
+  EndpointState es(0);
+  const ServiceManager::stream_len_t len = 3;
+  const ServiceManager::stream_sid_t sid = 0;
+  const char buf[] = "Hi";
+  std::string msg = ServiceManager::serialize(sid, buf, len);
+  es.ss.write(msg.c_str(), msg.size());
+  int c = sm.deserialize(&es);
+  ASSERT_EQ(es.sid, 0);
+  ASSERT_EQ(es.len, 3);
+  ASSERT_EQ(es.sstate, StreamState::TERM);
+  ASSERT_EQ(c, 1);
+  char buf2[3];
+  ASSERT_EQ(es.ss.rdbuf()->sgetn(buf2, 3), 3);
+  ASSERT_STREQ(buf2, "Hi");
+  c = sm.deserialize(&es);
+  ASSERT_EQ(es.sstate, StreamState::LEN);
+  ASSERT_EQ(c, 0);
+}

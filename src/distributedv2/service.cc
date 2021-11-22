@@ -2,6 +2,7 @@
 #include "context.h"
 
 #include <sstream>
+#include <memory>
 
 namespace dgl {
 namespace distributedv2 {
@@ -30,6 +31,20 @@ ServiceManager::ServiceManager(int rank, int size)
 
 void ServiceManager::add_service(std::unique_ptr<Service> serv) {
   servs.push_back(std::move(serv));
+}
+
+std::string ServiceManager::serialize(stream_sid_t sid, const char *data, stream_len_t len) {
+  constexpr size_t metalen = sizeof(stream_len_t) + sizeof(stream_sid_t) + sizeof(stream_term_t);
+  std::string ret(metalen + len, '\0');
+  size_t offset = 0;
+  std::memcpy(&ret[offset], &len, sizeof(stream_len_t));
+  offset += sizeof(stream_len_t);
+  std::memcpy(&ret[offset], &sid, sizeof(stream_sid_t));
+  offset += sizeof(stream_sid_t);
+  std::memcpy(&ret[offset], data, len);
+  offset += len;
+  std::memcpy(&ret[offset], &TERM, sizeof(stream_term_t));
+  return ret;
 }
 
 int ServiceManager::deserialize(EndpointState *estate) {
