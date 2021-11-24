@@ -109,14 +109,6 @@ int ServiceManager::deserialize(EndpointState *estate) {
 void ServiceManager::run(Communicator *comm, ServiceManager *self) {
   size_t length;
   while (!self->shutdown) {
-    for (size_t srcrank = 0; srcrank < self->size; srcrank++) {
-      if (srcrank == self->rank) continue;
-      EndpointState *estate = &self->ep_states[srcrank];
-      comm->get_data(srcrank, &estate->ss);
-      while (deserialize(estate)) {
-        self->servs[estate->sid]->recv(comm, estate);
-      }
-    }
     for (auto &serv: self->servs) {
       serv->progress(comm);
     }
