@@ -66,6 +66,52 @@ Communicator::~Communicator() {
   ucp_cleanup(ucp_context);
 }
 
+iov_pool_item_t::iov_pool_item_t()
+: used(false)
+, iov_cnt(0) {
+  std::memset(iov, 0, sizeof(iov));
+  std::memset(data, 0, sizeof(data));
+}
+
+void iov_pool_item_t::release() {
+  CHECK(used);
+  used = false;
+  for (uint8_t idx = 0; idx < iov_cnt; idx++) {
+    if (data[idx] == NULL) continue;
+    LOG(INFO) << "release:";
+    free(data[idx]);
+    data[idx] = NULL;
+  }
+}
+
+size_t iov_pool_item_t::fill_header() {
+  std::memset(header, 0, sizeof(header));
+  size_t offset = 0;
+  *((uint8_t *)UCS_PTR_BYTE_OFFSET(header, offset)) = iov_cnt;
+  offset += sizeof(uint8_t);
+  for (uint8_t idx = 0; idx < iov_cnt; idx++) {
+    *((size_t *)UCS_PTR_BYTE_OFFSET(header, offset)) = iov[idx].length;
+    offset += sizeof(size_t);
+  }
+  return offset;
+}
+
+bool iov_pool_item_t::empty() {
+  return iov_cnt == 0;
+}
+
+bool iov_pool_item_t::filled() {
+  return iov_cnt == MAX_IOV_CNT;
+}
+
+void iov_pool_item_t::append(void *buf, size_t length) {
+  CHECK(iov_cnt < MAX_IOV_CNT);
+  data[iov_cnt] = buf;
+  iov[iov_cnt].buffer = buf;
+  iov[iov_cnt].length = length;
+  iov_cnt++;
+}
+
 IovPool::IovPool(size_t length)
 : buffer(length), cursor(0) {}
 
@@ -73,11 +119,6 @@ int IovPool::alloc(iov_pool_item_t** item) {
   iov_pool_item_t *p = &buffer[cursor];
   if (p->used) return 1;
   p->used = true;
-  for (uint8_t idx = 0; idx < p->iov_cnt; idx++) {
-    if (p->data[idx] == NULL) continue;
-    free(p->data[idx]);
-    p->data[idx] = NULL;
-  }
   std::memset(p->iov, 0, sizeof(p->iov));
   p->iov_cnt = 0;
   *item = p;
@@ -85,39 +126,6 @@ int IovPool::alloc(iov_pool_item_t** item) {
   return 0;
 }
 
-void IovPool::release(iov_pool_item_t* item) {
-  CHECK(item->used);
-  item->used = false;
-}
-
-size_t IovPool::fill_header(iov_pool_item_t* item) {
-  std::memset(item->header, 0, sizeof(item->header));
-  size_t offset = 0;
-  *((uint8_t *)UCS_PTR_BYTE_OFFSET(item->header, offset)) = item->iov_cnt;
-  offset += sizeof(uint8_t);
-  for (uint8_t idx = 0; idx < item->iov_cnt; idx++) {
-    *((size_t *)UCS_PTR_BYTE_OFFSET(item->header, offset)) = item->iov[idx].length;
-    offset += sizeof(size_t);
-  }
-  return offset;
-}
-
-void IovPool::append(iov_pool_item_t* item, void *data, size_t length) {
-  CHECK(item->iov_cnt < MAX_IOV_CNT);
-  item->data[item->iov_cnt] = data;
-  item->iov[item->iov_cnt].buffer = data;
-  item->iov[item->iov_cnt].length = length;
-  item->iov_cnt++;
-}
-
-bool IovPool::filled(iov_pool_item_t* item) {
-  return item->iov_cnt == MAX_IOV_CNT;
-}
-
-bool IovPool::empty(iov_pool_item_t* item) {
-  if (item == NULL) return true;
-  return item->iov_cnt == 0;
-}
 
 
 ucs_status_t Communicator::recv_cb(
@@ -149,7 +157,7 @@ ucs_status_t Communicator::recv_cb(
 
   (*handler->cb)(handler->arg, item->iov, item->iov_cnt);
 
-  handler->pool->release(item);
+  item->release();
   return UCS_OK;
 }
 
@@ -157,12 +165,12 @@ void Communicator::send_cb(void *request, ucs_status_t status, void *user_data) 
   if (status != UCS_OK) {
     LOG(FATAL) << "send_cb failed with " << ucs_status_string(status);
   }
-  comm_chunk_t *chunk = (comm_chunk_t *)user_data;
-  chunk->pool->release(chunk->item);
+  iov_pool_item_t *chunk = (iov_pool_item_t *)user_data;
+  chunk->release();
   ucp_request_free(request);
 }
 
-void Communicator::send(int rank, unsigned id, comm_chunk_t *chunk) {
+void Communicator::send(int rank, unsigned id, iov_pool_item_t *chunk) {
   ucp_request_param_t params = {
     .op_attr_mask = UCP_OP_ATTR_FIELD_DATATYPE | UCP_OP_ATTR_FIELD_CALLBACK | UCP_OP_ATTR_FIELD_FLAGS | UCP_OP_ATTR_FIELD_USER_DATA,
     .flags = UCP_AM_SEND_FLAG_EAGER,
@@ -174,11 +182,11 @@ void Communicator::send(int rank, unsigned id, comm_chunk_t *chunk) {
   };
   ucs_status_ptr_t status;
   size_t header_length;
-  header_length = chunk->pool->fill_header(chunk->item);
+  header_length = chunk->fill_header();
   status = ucp_am_send_nbx(eps[rank], id,
-    chunk->item->header, header_length, chunk->item->iov, chunk->item->iov_cnt, &params);
+    chunk->header, header_length, chunk->iov, chunk->iov_cnt, &params);
   // realloc chunk
-  CHECK(!pool.alloc(&chunk->item));
+  CHECK(!pool.alloc(&chunk));
   if (status == NULL) return;
   if (UCS_PTR_IS_ERR(status)) {
     LOG(FATAL) << "ucp_am_send_nbx failed with " << ucs_status_string(UCS_PTR_STATUS(status));
@@ -186,14 +194,13 @@ void Communicator::send(int rank, unsigned id, comm_chunk_t *chunk) {
 }
 
 void Communicator::append(int rank, unsigned id, void *data, size_t length) {
-  comm_chunk_t *chunk = &chunks[rank][id];
-  if (chunk->item == NULL) {
-    CHECK(!pool.alloc(&chunk->item));
+  if (chunks[rank][id] == NULL) {
+    CHECK(!pool.alloc(&chunks[rank][id]));
   }
-  if (pool.filled(chunk->item)) {
-    send(rank, id, chunk);
+  if (chunks[rank][id]->filled()) {
+    send(rank, id, chunks[rank][id]);
   }
-  pool.append(chunk->item, data, length);
+  chunks[rank][id]->append(data, length);
 }
 
 unsigned Communicator::add_recv_handler(void *arg, comm_cb_handler_t cb) {
@@ -211,7 +218,7 @@ unsigned Communicator::add_recv_handler(void *arg, comm_cb_handler_t cb) {
     LOG(FATAL) << "ucp_worker_set_am_recv_handler failed with "
       << ucs_status_string(status);
   }
-  chunks.assign(size, std::vector<comm_chunk_t>(recv_handlers.size(), { NULL, &pool}));
+  chunks.assign(size, std::vector<iov_pool_item_t *>(recv_handlers.size(), NULL));
   return id;
 }
 
@@ -220,8 +227,9 @@ void Communicator::progress() {
   for (int destrank = 0; destrank < size; destrank++) {
     if (destrank == rank) continue;
     for (unsigned id = 0; id < recv_handlers.size(); id++) {
-      if (pool.empty(chunks[destrank][id].item)) continue;
-      send(destrank, id, &chunks[destrank][id]);
+      if (chunks[destrank][id] == NULL) continue;
+      if (chunks[destrank][id]->empty()) continue;
+      send(destrank, id, chunks[destrank][id]);
     }
   }
 }

@@ -28,10 +28,12 @@ struct iov_pool_item_t {
   comm_iov_t iov[MAX_IOV_CNT];
   uint8_t header[MAX_IOV_CNT * sizeof(size_t) + sizeof(uint8_t)];
   void *data[MAX_IOV_CNT];
-  iov_pool_item_t() : used(false), iov_cnt(0) {
-    std::memset(iov, 0, sizeof(iov));
-    std::memset(data, 0, sizeof(data));
-  }
+  iov_pool_item_t();
+  void release();
+  size_t fill_header();
+  bool filled();
+  bool empty();
+  void append(void *data, size_t length);
 };
 
 class IovPool {
@@ -40,21 +42,11 @@ size_t cursor;
 public:
   IovPool(size_t length);
   int alloc(iov_pool_item_t** item);
-  static void release(iov_pool_item_t* item);
-  static size_t fill_header(iov_pool_item_t* item);
-  static void append(iov_pool_item_t* item, void *data, size_t length);
-  static bool filled(iov_pool_item_t* item);
-  static bool empty(iov_pool_item_t* item);
 };
 
 struct comm_recv_handler_t {
   void *arg;
   comm_cb_handler_t cb;
-  IovPool *pool;
-};
-
-struct comm_chunk_t {
-  iov_pool_item_t *item;
   IovPool *pool;
 };
 
@@ -68,7 +60,7 @@ class Communicator {
   std::vector<ucp_ep_h> eps;
   IovPool pool;
   std::vector<comm_recv_handler_t> recv_handlers;
-  std::vector<std::vector<comm_chunk_t>> chunks;
+  std::vector<std::vector<iov_pool_item_t*>> chunks;
   static ucs_status_t recv_cb(
     void *arg,
     const void *header,
@@ -76,7 +68,7 @@ class Communicator {
     void *data, size_t length,
     const ucp_am_recv_param_t *param);
   static void send_cb(void *request, ucs_status_t status, void *user_data);
-  void send(int rank, unsigned id, comm_chunk_t *chunk);
+  void send(int rank, unsigned id, iov_pool_item_t *chunk);
 public:
   Communicator(int rank, int size, size_t buffer_len = (1<<20));
   ~Communicator();
