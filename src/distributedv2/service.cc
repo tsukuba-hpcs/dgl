@@ -12,7 +12,7 @@ GraphServer::GraphServer(GraphRef g)
   : local_graph(g) {
 }
 
-void GraphServer::recv(Communicator *comm, EndpointState *estate) {
+void GraphServer::recv(Communicator *comm, const void *buffer, size_t length) {
 
 }
 
@@ -20,99 +20,34 @@ void GraphServer::progress(Communicator *comm) {
 
 }
 
-ServiceManager::ServiceManager(int rank, int size)
+ServiceManager::ServiceManager(int rank, int size, Communicator *comm)
   : shutdown(false)
   , rank(rank)
-  , size(size) {
-  for(int rank = 0; rank < size; rank++) {
-    ep_states.emplace_back(rank);
+  , size(size)
+  , comm(comm) {
+}
+
+void ServiceManager::recv_cb(void *arg, comm_iov_t *iov, uint8_t iov_cnt) {
+  recv_cb_arg_t *cbarg = (recv_cb_arg_t *)arg;
+  for (uint8_t idx = 0; idx < iov_cnt; idx++) {
+    cbarg->serv->recv(cbarg->self->comm, iov[idx].buffer, iov[idx].length);
   }
 }
 
-void ServiceManager::add_service(std::unique_ptr<Service> serv) {
+void ServiceManager::add_service(std::unique_ptr<Service> &&serv) {
   servs.push_back(std::move(serv));
+  args.emplace_back(servs.back().get(), this);
+  unsigned id = comm->add_recv_handler(&args.back(), recv_cb);
+  CHECK(id + 1 == servs.size());
 }
 
-std::string ServiceManager::serialize(stream_sid_t sid, const char *data, stream_len_t len) {
-  constexpr size_t metalen = sizeof(stream_len_t) + sizeof(stream_sid_t) + sizeof(stream_term_t);
-  std::string ret(metalen + len, '\0');
-  size_t offset = 0;
-  std::memcpy(&ret[offset], &len, sizeof(stream_len_t));
-  offset += sizeof(stream_len_t);
-  std::memcpy(&ret[offset], &sid, sizeof(stream_sid_t));
-  offset += sizeof(stream_sid_t);
-  std::memcpy(&ret[offset], data, len);
-  offset += len;
-  std::memcpy(&ret[offset], &TERM, sizeof(stream_term_t));
-  return ret;
-}
-
-int ServiceManager::deserialize(EndpointState *estate) {
-  char len_buf[sizeof(stream_len_t)];
-  char sid_buf[sizeof(stream_sid_t)];
-  char term_buf[sizeof(stream_term_t)];
-  int length;
-  int pos;
-  while (1) {
-    switch (estate->sstate) {
-      case StreamState::LEN:
-        length = estate->ss.rdbuf()->sgetn(len_buf, sizeof(stream_len_t));
-        if (length < sizeof(stream_len_t)) {
-          pos = estate->ss.tellg() - length;
-          estate->ss.seekg(pos);
-          return 0;
-        }
-        estate->len = *(stream_len_t *)len_buf;
-        estate->sstate = StreamState::SID;
-        break;
-      case StreamState::SID:
-        length = estate->ss.rdbuf()->sgetn(sid_buf, sizeof(stream_sid_t));
-        if (length < sizeof(stream_sid_t)) {
-          pos = estate->ss.tellg() - length;
-          estate->ss.seekg(pos);
-          return 0;
-        }
-        estate->sid = *(stream_sid_t *)sid_buf;
-        estate->sstate = StreamState::CONTENT;
-        break;
-      case StreamState::CONTENT:
-        length = estate->ss.rdbuf()->sgetn(sid_buf, estate->len);
-        pos = estate->ss.tellg() - length;
-        estate->ss.seekg(pos);
-        if (length < estate->len) {
-          return 0;
-        }
-        estate->sstate = StreamState::TERM;
-        return 1;
-      case StreamState::TERM:
-        length = estate->ss.rdbuf()->sgetn(term_buf, sizeof(stream_term_t));
-        if (length < sizeof(stream_term_t)) {
-          pos = estate->ss.tellg() - length;
-          estate->ss.seekg(pos);
-          return 0;
-        }
-        CHECK(*(stream_term_t *)term_buf == TERM);
-        pos = estate->ss.tellg();
-        estate->sstate = StreamState::LEN;
-        if (pos > MAX_STREAM_LENGTH) {
-          // Reset Stream
-          std::string str(estate->ss.str());
-          estate->ss.seekg(0);
-          estate->ss.seekp(0);
-          estate->ss.write(str.c_str(), str.size());
-        }
-        break;
-    }
-  }
-}
-
-void ServiceManager::run(Communicator *comm, ServiceManager *self) {
+void ServiceManager::run(ServiceManager *self) {
   size_t length;
   while (!self->shutdown) {
     for (auto &serv: self->servs) {
-      serv->progress(comm);
+      serv->progress(self->comm);
     }
-    comm->progress();
+    self->comm->progress();
   }
 }
 

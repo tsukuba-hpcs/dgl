@@ -24,7 +24,7 @@ struct Context: public runtime::Object {
   static constexpr const char* _type_key = "distributedv2.Context";
   Context(int rank, int size)
   : comm(rank, size)
-  , manager(rank, size) {};
+  , manager(rank, size, &comm) {};
   DGL_DECLARE_OBJECT_TYPE_INFO(Context, runtime::Object);
 };
 
