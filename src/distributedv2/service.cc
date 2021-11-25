@@ -28,15 +28,16 @@ ServiceManager::ServiceManager(int rank, int size, Communicator *comm)
 }
 
 void ServiceManager::recv_cb(void *arg, comm_iov_t *iov, uint8_t iov_cnt) {
-  recv_cb_arg_t *cbarg = (recv_cb_arg_t *)arg;
+  sm_recv_cb_arg_t *cbarg = (sm_recv_cb_arg_t *)arg;
   for (uint8_t idx = 0; idx < iov_cnt; idx++) {
-    cbarg->serv->recv(cbarg->self->comm, iov[idx].buffer, iov[idx].length);
+    cbarg->serv->recv(cbarg->comm, iov[idx].buffer, iov[idx].length);
   }
 }
 
 void ServiceManager::add_service(std::unique_ptr<Service> &&serv) {
   servs.push_back(std::move(serv));
-  args.emplace_back(servs.back().get(), this);
+  sm_recv_cb_arg_t arg(servs.back().get(), comm);
+  args.push_back(std::move(arg));
   unsigned id = comm->add_recv_handler(&args.back(), recv_cb);
   CHECK(id + 1 == servs.size());
 }

@@ -33,13 +33,16 @@ public:
   void progress(Communicator *comm);
 };
 
+struct sm_recv_cb_arg_t {
+  Service *serv;
+  Communicator *comm;
+  sm_recv_cb_arg_t(Service *serv, Communicator *comm)
+  : serv(std::move(serv)), comm(std::move(comm)) {};
+};
+
 class ServiceManager {
-  struct recv_cb_arg_t {
-    Service *serv;
-    ServiceManager *self;
-  };
   std::vector<std::unique_ptr<Service>> servs;
-  std::vector<recv_cb_arg_t> args;
+  std::vector<sm_recv_cb_arg_t> args;
   Communicator *comm;
   std::atomic_bool shutdown;
   int rank, size;
