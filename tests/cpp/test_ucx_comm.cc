@@ -23,12 +23,12 @@ TEST(COMM_TEST, HELLO) {
   id = comm0.add_recv_handler(NULL, recv_cb);
   comm1.add_recv_handler(NULL, recv_cb);
   ASSERT_EQ(id, 0);
-  char data[] = "Hello, world";
+  char *data = (char *)malloc(sizeof("Hello, world")); 
+  std::strcpy(data, "Hello, world");
   comm1.append(0, id, data, 13);
   comm1.progress();
   for (int trial = 0; trial < 10; trial++) {
     comm0.progress();
   }
-  fprintf(stderr, "finish hello\n");
 }
 
