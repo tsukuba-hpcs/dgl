@@ -27,13 +27,13 @@ struct iov_pool_item_t {
   uint8_t iov_cnt;
   comm_iov_t iov[MAX_IOV_CNT];
   uint8_t header[MAX_IOV_CNT * sizeof(size_t) + sizeof(uint8_t)];
-  void *data[MAX_IOV_CNT];
+  std::unique_ptr<uint8_t[]> data[MAX_IOV_CNT];
   iov_pool_item_t();
   void release();
   size_t fill_header();
   bool filled();
   bool empty();
-  void append(void *data, size_t length);
+  void append(std::unique_ptr<uint8_t[]> &&data, size_t length);
 };
 
 class IovPool {
@@ -75,7 +75,7 @@ public:
   ucp_address_t* get_workeraddr();
   int get_workerlen();
   unsigned add_recv_handler(void *arg, comm_cb_handler_t cb);
-  void append(int rank, unsigned id, void *data, size_t length);
+  void append(int rank, unsigned id, std::unique_ptr<uint8_t[]> &&data, size_t length);
   void create_endpoints(std::string addrs);
   void progress();
 };

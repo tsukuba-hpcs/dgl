@@ -7,7 +7,7 @@ using namespace dgl::distributedv2;
 
 
 static void recv_cb(void *arg, comm_iov_t *iov, uint8_t iov_cnt) {
-  fprintf(stderr, "recv_cb: iov_cnt=%u iov[0].length = %zu", iov_cnt, iov[0].length);
+  fprintf(stderr, "recv_cb: iov_cnt=%u iov[0].length = %zu\n", iov_cnt, iov[0].length);
 }
 
 TEST(COMM_TEST, HELLO) {
@@ -23,12 +23,13 @@ TEST(COMM_TEST, HELLO) {
   id = comm0.add_recv_handler(NULL, recv_cb);
   comm1.add_recv_handler(NULL, recv_cb);
   ASSERT_EQ(id, 0);
-  char *data = (char *)malloc(sizeof("Hello, world")); 
-  std::strcpy(data, "Hello, world");
-  comm1.append(0, id, data, 13);
+  std::unique_ptr<uint8_t[]> data = std::unique_ptr<uint8_t[]>(new uint8_t[sizeof("Hello, world")]);
+  std::strcpy((char *)data.get(), "Hello, world");
+  comm1.append(0, id, std::move(data), sizeof("Hello, world"));
   comm1.progress();
   for (int trial = 0; trial < 10; trial++) {
     comm0.progress();
+    comm1.progress();
   }
 }
 

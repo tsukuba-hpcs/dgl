@@ -77,10 +77,7 @@ void iov_pool_item_t::release() {
   CHECK(used);
   used = false;
   for (uint8_t idx = 0; idx < iov_cnt; idx++) {
-    if (data[idx] == NULL) continue;
-    LOG(INFO) << "release:";
-    free(data[idx]);
-    data[idx] = NULL;
+    data[idx] = nullptr;
   }
 }
 
@@ -104,11 +101,11 @@ bool iov_pool_item_t::filled() {
   return iov_cnt == MAX_IOV_CNT;
 }
 
-void iov_pool_item_t::append(void *buf, size_t length) {
+void iov_pool_item_t::append(std::unique_ptr<uint8_t[]> &&buf, size_t length) {
   CHECK(iov_cnt < MAX_IOV_CNT);
-  data[iov_cnt] = buf;
-  iov[iov_cnt].buffer = buf;
+  iov[iov_cnt].buffer = buf.get();
   iov[iov_cnt].length = length;
+  data[iov_cnt] = std::move(buf);
   iov_cnt++;
 }
 
@@ -185,22 +182,21 @@ void Communicator::send(int rank, unsigned id, iov_pool_item_t *chunk) {
   header_length = chunk->fill_header();
   status = ucp_am_send_nbx(eps[rank], id,
     chunk->header, header_length, chunk->iov, chunk->iov_cnt, &params);
-  // realloc chunk
-  CHECK(!pool.alloc(&chunk));
   if (status == NULL) return;
   if (UCS_PTR_IS_ERR(status)) {
     LOG(FATAL) << "ucp_am_send_nbx failed with " << ucs_status_string(UCS_PTR_STATUS(status));
   }
 }
 
-void Communicator::append(int rank, unsigned id, void *data, size_t length) {
-  if (chunks[rank][id] == NULL) {
-    CHECK(!pool.alloc(&chunks[rank][id]));
+void Communicator::append(int destrank, unsigned id, std::unique_ptr<uint8_t[]> &&data, size_t length) {
+  if (chunks[destrank][id] == NULL) {
+    CHECK(!pool.alloc(&chunks[destrank][id]));
   }
-  if (chunks[rank][id]->filled()) {
-    send(rank, id, chunks[rank][id]);
+  if (chunks[destrank][id]->filled()) {
+    send(destrank, id, chunks[destrank][id]);
+    CHECK(!pool.alloc(&chunks[destrank][id]));
   }
-  chunks[rank][id]->append(data, length);
+  chunks[destrank][id]->append(std::move(data), length);
 }
 
 unsigned Communicator::add_recv_handler(void *arg, comm_cb_handler_t cb) {
@@ -230,6 +226,7 @@ void Communicator::progress() {
       if (chunks[destrank][id] == NULL) continue;
       if (chunks[destrank][id]->empty()) continue;
       send(destrank, id, chunks[destrank][id]);
+      chunks[destrank][id] = NULL;
     }
   }
 }
