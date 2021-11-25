@@ -11,6 +11,7 @@
 #include <dgl/runtime/object.h>
 
 #include <string>
+#include <cstring>
 
 namespace dgl {
 namespace distributedv2 {
@@ -26,7 +27,11 @@ struct iov_pool_item_t {
   uint8_t iov_cnt;
   comm_iov_t iov[MAX_IOV_CNT];
   uint8_t header[MAX_IOV_CNT * sizeof(size_t) + sizeof(uint8_t)];
-  std::vector<void *> data;
+  void *data[MAX_IOV_CNT];
+  iov_pool_item_t() : used(false), iov_cnt(0) {
+    std::memset(iov, 0, sizeof(iov));
+    std::memset(data, 0, sizeof(data));
+  }
 };
 
 class IovPool {
