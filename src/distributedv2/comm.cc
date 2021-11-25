@@ -69,8 +69,8 @@ Communicator::~Communicator() {
 iov_pool_item_t::iov_pool_item_t()
 : used(false)
 , iov_cnt(0) {
-  std::memset(iov, 0, sizeof(iov));
-  std::memset(data, 0, sizeof(data));
+  std::fill(iov, iov + MAX_IOV_CNT, comm_iov_t{.buffer = NULL, .length = 0});
+  std::fill(data, data + MAX_IOV_CNT, nullptr);
 }
 
 void iov_pool_item_t::release() {
@@ -82,7 +82,7 @@ void iov_pool_item_t::release() {
 }
 
 size_t iov_pool_item_t::fill_header() {
-  std::memset(header, 0, sizeof(header));
+  std::fill(header, header + HEADER_LEN, (uint8_t)0);
   size_t offset = 0;
   *((uint8_t *)UCS_PTR_BYTE_OFFSET(header, offset)) = iov_cnt;
   offset += sizeof(uint8_t);

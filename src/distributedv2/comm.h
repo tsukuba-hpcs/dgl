@@ -26,7 +26,8 @@ struct iov_pool_item_t {
   bool used;
   uint8_t iov_cnt;
   comm_iov_t iov[MAX_IOV_CNT];
-  uint8_t header[MAX_IOV_CNT * sizeof(size_t) + sizeof(uint8_t)];
+  static constexpr size_t HEADER_LEN = MAX_IOV_CNT * sizeof(size_t) + sizeof(uint8_t);
+  uint8_t header[HEADER_LEN];
   std::unique_ptr<uint8_t[]> data[MAX_IOV_CNT];
   iov_pool_item_t();
   void release();
