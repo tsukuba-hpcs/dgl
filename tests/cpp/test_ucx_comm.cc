@@ -20,27 +20,23 @@ protected:
 };
 
 struct comm_test_ctx {
-  uint8_t iov_cnt;
-  size_t first_len;
-  void *first_buf;
+  size_t len;
+  void *buf;
   size_t count;
 };
 
-static void recv_cb(void *arg, comm_iov_t *iov, uint8_t iov_cnt) {
+static void recv_cb(void *arg, const void *buffer, size_t length) {
   comm_test_ctx *ctx = (comm_test_ctx *)(arg);
-  ASSERT_TRUE(iov_cnt > 0);
-  ctx->count += iov_cnt;
-  ctx->iov_cnt = iov_cnt;
-  ctx->first_len = iov[0].length;
-  ctx->first_buf = std::malloc(iov[0].length);
-  std::memcpy(ctx->first_buf, iov[0].buffer, iov[0].length);
+  ctx->count++;
+  ctx->len = length;
+  if (ctx->buf == NULL) ctx->buf = std::malloc(length);
+  std::memcpy(ctx->buf, buffer, length);
 }
 
 TEST_F(CommTest, HELLO) {
   comm_test_ctx ctx {
-    .iov_cnt = 0,
-    .first_len = 0,
-    .first_buf = NULL,
+    .len = 0,
+    .buf = NULL,
     .count = 0};
   unsigned id;
   id = comm0.add_recv_handler(&ctx, recv_cb);
@@ -56,16 +52,14 @@ TEST_F(CommTest, HELLO) {
     comm1.progress();
   }
   ASSERT_EQ(ctx.count, 1);
-  ASSERT_EQ(ctx.iov_cnt, 1);
-  ASSERT_EQ(ctx.first_len, sizeof("Hello, world"));
-  ASSERT_STREQ((char*)ctx.first_buf, "Hello, world");
+  ASSERT_EQ(ctx.len, sizeof("Hello, world"));
+  ASSERT_STREQ((char*)ctx.buf, "Hello, world");
 }
 
 TEST_F(CommTest, HELLO_MULTI) {
   comm_test_ctx ctx {
-    .iov_cnt = 0,
-    .first_len = 0,
-    .first_buf = NULL,
+    .len = 0,
+    .buf = NULL,
     .count = 0};
   comm0.add_recv_handler(&ctx, recv_cb);
   comm1.add_recv_handler(NULL, recv_cb);
@@ -81,8 +75,7 @@ TEST_F(CommTest, HELLO_MULTI) {
     comm1.progress();
   }
   ASSERT_EQ(ctx.count, 100);
-  ASSERT_EQ(ctx.iov_cnt, 100 % MAX_IOV_CNT);
-  ASSERT_EQ(ctx.first_len, sizeof("Hello, world"));
-  ASSERT_STREQ((char*)ctx.first_buf, "Hello, world");
+  ASSERT_EQ(ctx.len, sizeof("Hello, world"));
+  ASSERT_STREQ((char*)ctx.buf, "Hello, world");
 }
 

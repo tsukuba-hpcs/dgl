@@ -46,7 +46,7 @@ class ServiceManager {
   Communicator *comm;
   std::atomic_bool shutdown;
   int rank, size;
-  static void recv_cb(void *arg, comm_iov_t *iov, uint8_t iov_cnt);
+  static void recv_cb(void *arg, const void *buffer, size_t length);
 public:
   ServiceManager(int rank, int size, Communicator *comm);
   void add_service(std::unique_ptr<Service> &&serv);

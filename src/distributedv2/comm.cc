@@ -69,7 +69,7 @@ Communicator::~Communicator() {
 iov_pool_item_t::iov_pool_item_t()
 : used(false)
 , iov_cnt(0) {
-  std::fill(iov, iov + MAX_IOV_CNT, comm_iov_t{.buffer = NULL, .length = 0});
+  std::fill(iov, iov + MAX_IOV_CNT, ucp_dt_iov_t{.buffer = NULL, .length = 0});
   std::fill(data, data + MAX_IOV_CNT, nullptr);
 }
 
@@ -133,28 +133,17 @@ ucs_status_t Communicator::recv_cb(
   const ucp_am_recv_param_t *param) {
   CHECK(!(param->recv_attr & UCP_AM_RECV_ATTR_FLAG_RNDV));
   CHECK(header_length >= sizeof(uint8_t));
-  iov_pool_item_t *item;
-  size_t idx;
-  size_t offset;
-  uint8_t iov_cnt = ((uint8_t*)header)[0];
+  uint8_t iov_cnt = *((uint8_t*)header);
   CHECK(header_length == sizeof(uint8_t) + sizeof(size_t) * iov_cnt);
   size_t *iov_len = (size_t *)UCS_PTR_BYTE_OFFSET(header, sizeof(uint8_t));
   comm_recv_handler_t *handler = (comm_recv_handler_t *)(arg);
+  size_t offset = 0;
 
-  CHECK(!handler->pool->alloc(&item));
-  item->iov_cnt = iov_cnt;
-  offset = 0;
-
-  for (idx = 0; idx < item->iov_cnt; idx++) {
-    item->iov[idx].length = iov_len[idx];
-    item->iov[idx].buffer = UCS_PTR_BYTE_OFFSET(data, offset);
-    offset += item->iov[idx].length;
+  for (size_t idx = 0; idx < iov_cnt; idx++) {
+    (*handler->cb)(handler->arg, UCS_PTR_BYTE_OFFSET(data, offset), iov_len[idx]);
+    offset += iov_len[idx];
   }
   CHECK(offset == length);
-
-  (*handler->cb)(handler->arg, item->iov, item->iov_cnt);
-
-  item->release();
   return UCS_OK;
 }
 
@@ -202,7 +191,7 @@ void Communicator::append(int destrank, unsigned id, std::unique_ptr<uint8_t[]> 
 unsigned Communicator::add_recv_handler(void *arg, comm_cb_handler_t cb) {
   ucs_status_t status;
   unsigned id = recv_handlers.size();
-  recv_handlers.push_back({arg, cb, &pool});
+  recv_handlers.push_back({arg, cb});
   ucp_am_handler_param_t param = {
     .field_mask = UCP_AM_HANDLER_PARAM_FIELD_ID | UCP_AM_HANDLER_PARAM_FIELD_ARG | UCP_AM_HANDLER_PARAM_FIELD_CB,
     .id = id,

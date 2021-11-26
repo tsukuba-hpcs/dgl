@@ -27,11 +27,9 @@ ServiceManager::ServiceManager(int rank, int size, Communicator *comm)
   , comm(comm) {
 }
 
-void ServiceManager::recv_cb(void *arg, comm_iov_t *iov, uint8_t iov_cnt) {
+void ServiceManager::recv_cb(void *arg, const void *buffer, size_t length) {
   sm_recv_cb_arg_t *cbarg = (sm_recv_cb_arg_t *)arg;
-  for (uint8_t idx = 0; idx < iov_cnt; idx++) {
-    cbarg->serv->recv(cbarg->comm, iov[idx].buffer, iov[idx].length);
-  }
+  cbarg->serv->recv(cbarg->comm, buffer, length);
 }
 
 void ServiceManager::add_service(std::unique_ptr<Service> &&serv) {

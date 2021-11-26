@@ -16,16 +16,15 @@
 namespace dgl {
 namespace distributedv2 {
 
-typedef ucp_dt_iov_t comm_iov_t;
 
-typedef void (*comm_cb_handler_t)(void *arg, comm_iov_t *iov, uint8_t iov_cnt);
+typedef void (*comm_cb_handler_t)(void *arg, const void *buffer, size_t length);
 
 #define MAX_IOV_CNT 16
 
 struct iov_pool_item_t {
   bool used;
   uint8_t iov_cnt;
-  comm_iov_t iov[MAX_IOV_CNT];
+  ucp_dt_iov_t iov[MAX_IOV_CNT];
   static constexpr size_t HEADER_LEN = MAX_IOV_CNT * sizeof(size_t) + sizeof(uint8_t);
   uint8_t header[HEADER_LEN];
   std::unique_ptr<uint8_t[]> data[MAX_IOV_CNT];
@@ -48,7 +47,6 @@ public:
 struct comm_recv_handler_t {
   void *arg;
   comm_cb_handler_t cb;
-  IovPool *pool;
 };
 
 class Communicator {
