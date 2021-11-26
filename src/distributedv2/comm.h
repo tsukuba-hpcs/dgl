@@ -74,7 +74,7 @@ public:
   ucp_address_t* get_workeraddr();
   int get_workerlen();
   unsigned add_recv_handler(void *arg, comm_cb_handler_t cb);
-  void append(int rank, unsigned id, std::unique_ptr<uint8_t[]> &&data, size_t length);
+  void post(int rank, unsigned id, std::unique_ptr<uint8_t[]> &&data, size_t length);
   void create_endpoints(std::string addrs);
   void progress();
 };

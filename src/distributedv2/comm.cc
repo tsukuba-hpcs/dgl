@@ -177,7 +177,7 @@ void Communicator::send(int rank, unsigned id, iov_pool_item_t *chunk) {
   }
 }
 
-void Communicator::append(int destrank, unsigned id, std::unique_ptr<uint8_t[]> &&data, size_t length) {
+void Communicator::post(int destrank, unsigned id, std::unique_ptr<uint8_t[]> &&data, size_t length) {
   if (chunks[destrank][id] == NULL) {
     CHECK(!pool.alloc(&chunks[destrank][id]));
   }

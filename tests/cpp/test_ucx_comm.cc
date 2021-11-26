@@ -33,7 +33,7 @@ static void recv_cb(void *arg, const void *buffer, size_t length) {
   std::memcpy(ctx->buf, buffer, length);
 }
 
-TEST_F(CommTest, HELLO) {
+TEST_F(CommTest, PING) {
   comm_test_ctx ctx {
     .len = 0,
     .buf = NULL,
@@ -45,7 +45,7 @@ TEST_F(CommTest, HELLO) {
   ASSERT_EQ(id, 0);
   std::unique_ptr<uint8_t[]> data = std::unique_ptr<uint8_t[]>(new uint8_t[sizeof("Hello, world")]);
   std::strcpy((char *)data.get(), "Hello, world");
-  comm1.append(0, id, std::move(data), sizeof("Hello, world"));
+  comm1.post(0, id, std::move(data), sizeof("Hello, world"));
   comm1.progress();
   for (int trial = 0; trial < 10000; trial++) {
     comm0.progress();
@@ -56,7 +56,7 @@ TEST_F(CommTest, HELLO) {
   ASSERT_STREQ((char*)ctx.buf, "Hello, world");
 }
 
-TEST_F(CommTest, HELLO_MULTI) {
+TEST_F(CommTest, PING_MULTI) {
   comm_test_ctx ctx {
     .len = 0,
     .buf = NULL,
@@ -66,7 +66,7 @@ TEST_F(CommTest, HELLO_MULTI) {
   for (size_t idx = 0; idx < 100; idx++) {
     std::unique_ptr<uint8_t[]> data = std::unique_ptr<uint8_t[]>(new uint8_t[sizeof("Hello, world")]);
     std::strcpy((char *)data.get(), "Hello, world");
-    comm1.append(0, 0, std::move(data), sizeof("Hello, world"));
+    comm1.post(0, 0, std::move(data), sizeof("Hello, world"));
     comm0.progress();
   }
   ASSERT_EQ(ctx.count, 0);
