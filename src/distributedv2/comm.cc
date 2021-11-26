@@ -114,7 +114,10 @@ IovPool::IovPool(size_t length)
 
 int IovPool::alloc(iov_pool_item_t** item) {
   iov_pool_item_t *p = &buffer[cursor];
-  if (p->used) return 1;
+  if (p->used) {
+    LOG(INFO) << "IovPool alloc item failed: cursor= " << cursor;
+    return 1;
+  }
   p->used = true;
   std::memset(p->iov, 0, sizeof(p->iov));
   p->iov_cnt = 0;
@@ -171,8 +174,12 @@ void Communicator::send(int rank, unsigned id, iov_pool_item_t *chunk) {
   header_length = chunk->fill_header();
   status = ucp_am_send_nbx(eps[rank], id,
     chunk->header, header_length, chunk->iov, chunk->iov_cnt, &params);
-  if (status == NULL) return;
+  if (status == NULL) {
+    chunk->release();
+    return;
+  }
   if (UCS_PTR_IS_ERR(status)) {
+    chunk->release();
     LOG(FATAL) << "ucp_am_send_nbx failed with " << ucs_status_string(UCS_PTR_STATUS(status));
   }
 }

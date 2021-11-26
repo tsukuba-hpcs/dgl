@@ -79,3 +79,26 @@ TEST_F(CommTest, PING_MULTI) {
   ASSERT_STREQ((char*)ctx.buf, "Hello, world");
 }
 
+TEST_F(CommTest, REUSE_POOL) {
+  comm_test_ctx ctx {
+    .len = 0,
+    .buf = NULL,
+    .count = 0};
+  comm0.add_recv_handler(&ctx, recv_cb);
+  comm1.add_recv_handler(NULL, recv_cb);
+  size_t req_cnt = 0;
+  while (ctx.count < 10000000) {
+    comm0.progress();
+    comm1.progress();
+    if (req_cnt < 10000000 && req_cnt - ctx.count < 100) {
+      req_cnt++;
+      std::unique_ptr<uint8_t[]> data = std::unique_ptr<uint8_t[]>(new uint8_t[sizeof("Hello, world")]);
+      std::strcpy((char *)data.get(), "Hello, world");
+      comm1.post(0, 0, std::move(data), sizeof("Hello, world"));
+    }
+  }
+  ASSERT_EQ(ctx.count, 10000000);
+  ASSERT_EQ(ctx.count, req_cnt);
+  ASSERT_EQ(ctx.len, sizeof("Hello, world"));
+  ASSERT_STREQ((char*)ctx.buf, "Hello, world");
+}
