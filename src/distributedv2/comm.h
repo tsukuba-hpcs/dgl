@@ -21,6 +21,8 @@ typedef void (*comm_cb_handler_t)(void *arg, const void *buffer, size_t length);
 
 #define MAX_IOV_CNT 16
 
+#define PTR_BYTE_OFFSET UCS_PTR_BYTE_OFFSET
+
 struct iov_pool_item_t {
   bool used;
   uint8_t iov_cnt;

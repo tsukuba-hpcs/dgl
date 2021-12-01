@@ -12,7 +12,9 @@
 #include <memory>
 #include <vector>
 #include <atomic>
-#include <sstream>
+#include <queue>
+#include <unordered_map>
+
 
 #include "comm.h"
 
@@ -21,14 +23,66 @@ namespace distributedv2 {
 
 class Service {
 public:
+  unsigned sid;
   virtual void recv(Communicator *comm, const void *buffer, size_t length) = 0;
   virtual void progress(Communicator *comm) = 0;
 };
 
-class GraphServer: Service {
+struct edge_elem_t {
+  uint64_t src, dst, id;
+  bool operator==(const edge_elem_t& rhs) const {
+    return id == rhs.id;
+  }
+  bool operator<(const edge_elem_t& rhs) const {
+    return id < rhs.id;
+  }
+};
+
+using block_t = std::vector<edge_elem_t>;
+
+struct neighbor_sampler_prog_t {
+  std::vector<block_t> blocks;
+  uint64_t ppt;
+  neighbor_sampler_prog_t() : ppt(0) {}
+  neighbor_sampler_prog_t(int num_layers)
+  : blocks(num_layers)
+  , ppt(0) {}
+};
+
+struct neighbor_sampler_arg_t {
+  int rank;
+  int size;
+  uint64_t num_nodes;
+  uint16_t num_layers;
+  GraphRef g;
+};
+
+/**
+ * Binary format of the request:
+ * uint64_t (req_id<<1) | uint64_t ppt | uint16_t depth | uint16_t nodes' length | [uint64_t node_id] * length
+ * Binary format of the response:
+ * uint64_t (req_id<<1)+1 | uint64_t ppt | uint16_t depth | uint16_t edges' length | [uint64_t src_id uint64_t dst_id uint64_t edge_id] * length
+ */
+class NeighborSampler: public Service {
   GraphRef local_graph;
+  uint16_t num_layers;
+  int rank, size;
+  uint64_t node_slit;
+  uint64_t req_id;
+  static constexpr uint64_t PPT_ALL = 1000000000000ll;
+  static constexpr size_t HEADER_LEN = sizeof(uint64_t) + sizeof(uint64_t) + sizeof(uint16_t) + sizeof(uint16_t);
+  std::queue<std::vector<uint64_t>> *input_que;
+  std::queue<std::vector<block_t>>  *output_que;
+  std::unordered_map<uint64_t, neighbor_sampler_prog_t> prog_que;
+  void inline send_query(Communicator *comm, uint16_t dstrank, uint16_t depth, uint64_t req_id, uint64_t *nodes, uint16_t len, uint64_t ppt);
+  void inline send_response(Communicator *comm, uint16_t depth, uint64_t req_id, edge_elem_t *edges, uint16_t len, uint64_t ppt);
+  void inline recv_query(Communicator *comm, uint16_t depth, uint64_t ppt, uint64_t req_id, uint16_t len, const void *buffer);
+  void inline recv_response(Communicator *comm, uint16_t depth, uint64_t ppt, uint64_t req_id, uint16_t len, const void *buffer);
+  void scatter(Communicator *comm, uint16_t depth, uint64_t req_id, std::vector<uint64_t> &&seeds, uint64_t ppt);
 public:
-  GraphServer(GraphRef g);
+  NeighborSampler(neighbor_sampler_arg_t &&arg,
+    std::queue<std::vector<uint64_t>> *input,
+    std::queue<std::vector<block_t>> *output);
   void recv(Communicator *comm, const void *buffer, size_t length);
   void progress(Communicator *comm);
 };
@@ -50,6 +104,7 @@ class ServiceManager {
 public:
   ServiceManager(int rank, int size, Communicator *comm);
   void add_service(std::unique_ptr<Service> &&serv);
+  void progress();
   static void run(ServiceManager *self);
 };
 
