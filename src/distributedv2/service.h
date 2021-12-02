@@ -31,10 +31,11 @@ public:
 struct edge_elem_t {
   dgl_id_t src, dst, id;
   bool operator==(const edge_elem_t& rhs) const {
-    return id == rhs.id;
+    return src == rhs.src && dst == rhs.dst;
   }
   bool operator<(const edge_elem_t& rhs) const {
-    return id < rhs.id;
+    if (src != rhs.src) return src < rhs.src;
+    return dst < rhs.dst;
   }
 };
 

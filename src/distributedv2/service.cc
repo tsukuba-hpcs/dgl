@@ -66,9 +66,9 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
       r++;
     }
     if (l == r) continue;
-    LOG(INFO) << "scatter depth=" << depth <<  " rank=" << rank << " dstrank=" << dstrank;
+    // LOG(INFO) << "scatter depth=" << depth <<  " rank=" << rank << " dstrank=" << dstrank;
     for (uint16_t i = l; i < r; i++) {
-      LOG(INFO) << "i=" << i << " seeds[i]=" << seeds[i];
+      // LOG(INFO) << "i=" << i << " seeds[i]=" << seeds[i];
     }
     // Relay the query
     if (dstrank != rank) {
@@ -82,9 +82,9 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
     std::vector<int> local_seeds(seeds.begin() + l, seeds.begin() + r);
     dgl::EdgeArray edge = local_graph->InEdges(aten::VecToIdArray(std::move(local_seeds), 64));
     int64_t edge_len = edge.id.NumElements();
-    LOG(INFO) << "scatter rank=" << rank << " edge_len=" << edge_len << " size=";
+    // LOG(INFO) << "scatter rank=" << rank << " edge_len=" << edge_len << " size=";
     bool fin = edge_len == 0 || depth + 1 == num_layers;
-    uint64_t cur_ppt = (fin && r == seeds.size()) ? rem_ppt : ppt * (r-l) / seeds.size();
+    uint64_t cur_ppt = (r == seeds.size()) ? rem_ppt : ppt * (r-l) / seeds.size();
     CHECK(cur_ppt > 0);
     rem_ppt -= cur_ppt;
     // self request
@@ -95,18 +95,20 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
         src = *(dgl_id_t *)PTR_BYTE_OFFSET(edge.src->data, sizeof(dgl_id_t) * idx);
         dst = *(dgl_id_t *)PTR_BYTE_OFFSET(edge.dst->data, sizeof(dgl_id_t) * idx);
         id = *(dgl_id_t *)PTR_BYTE_OFFSET(edge.id->data, sizeof(dgl_id_t) * idx);
-        LOG(INFO) << "idx=" << idx << " src=" << src << " dst=" << dst;
+        // LOG(INFO) << "idx=" << idx << " src=" << src << " dst=" << dst;
         prog_que[req_id].blocks[depth].push_back(edge_elem_t{src,dst,id});
         next_seeds.push_back(src);
       }
       if (fin) {
         prog_que[req_id].ppt += cur_ppt;
-        LOG(INFO) << "req_id=" << req_id << " ppt=" << ppt;
+        // LOG(INFO) << "req_id=" << req_id << " ppt=" << ppt;
         if (prog_que[req_id].ppt == PPT_ALL) {
-          LOG(INFO) << "req_id=" << req_id << " is finished";
+          // LOG(INFO) << "req_id=" << req_id << " is finished";
           for (uint16_t dep = 0; dep < num_layers; dep++) {
             std::sort(prog_que[req_id].blocks[dep].begin(), prog_que[req_id].blocks[dep].end());
-            std::unique(prog_que[req_id].blocks[dep].begin(), prog_que[req_id].blocks[dep].end());
+            prog_que[req_id].blocks[dep].erase(
+              std::unique(prog_que[req_id].blocks[dep].begin(), prog_que[req_id].blocks[dep].end())
+            , prog_que[req_id].blocks[dep].end());
           }
           output_que->push(std::move(prog_que[req_id].blocks));
           prog_que.erase(req_id);
@@ -122,7 +124,7 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
         edges[idx].src = *(dgl_id_t *)PTR_BYTE_OFFSET(edge.src->data, sizeof(dgl_id_t) * idx);
         edges[idx].dst = *(dgl_id_t *)PTR_BYTE_OFFSET(edge.dst->data, sizeof(dgl_id_t) * idx);
         edges[idx].id = *(dgl_id_t *)PTR_BYTE_OFFSET(edge.id->data, sizeof(dgl_id_t) * idx);
-        LOG(INFO) << "idx=" << idx << " src=" << edges[idx].src << " dst=" << edges[idx].dst;
+        // LOG(INFO) << "idx=" << idx << " src=" << edges[idx].src << " dst=" << edges[idx].dst;
         next_seeds.push_back(edges[idx].src);
       }
       if (fin) {
@@ -146,12 +148,14 @@ void inline NeighborSampler::recv_response(Communicator *comm, uint16_t depth, u
   std::memcpy(edges.data(), buffer, sizeof(edge_elem_t) * len);
   prog_que[req_id].blocks[depth].insert(prog_que[req_id].blocks[depth].end(), edges.begin(), edges.end());
   prog_que[req_id].ppt += ppt;
-  LOG(INFO) << "req_id=" << req_id << " ppt=" << ppt;
+  // LOG(INFO) << "req_id=" << req_id << " ppt=" << ppt;
   if (prog_que[req_id].ppt == PPT_ALL) {
-    LOG(INFO) << "req_id=" << req_id << " is finished";
+    // LOG(INFO) << "req_id=" << req_id << " is finished";
     for (uint16_t dep = 0; dep < num_layers; dep++) {
       std::sort(prog_que[req_id].blocks[dep].begin(), prog_que[req_id].blocks[dep].end());
-      std::unique(prog_que[req_id].blocks[dep].begin(), prog_que[req_id].blocks[dep].end());
+      prog_que[req_id].blocks[dep].erase(
+        std::unique(prog_que[req_id].blocks[dep].begin(), prog_que[req_id].blocks[dep].end())
+      , prog_que[req_id].blocks[dep].end());
     }
     output_que->push(std::move(prog_que[req_id].blocks));
     prog_que.erase(req_id);
