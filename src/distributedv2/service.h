@@ -29,7 +29,7 @@ public:
 };
 
 struct edge_elem_t {
-  uint64_t src, dst, id;
+  dgl_id_t src, dst, id;
   bool operator==(const edge_elem_t& rhs) const {
     return id == rhs.id;
   }
@@ -71,17 +71,17 @@ class NeighborSampler: public Service {
   uint64_t req_id;
   static constexpr uint64_t PPT_ALL = 1000000000000ll;
   static constexpr size_t HEADER_LEN = sizeof(uint64_t) + sizeof(uint64_t) + sizeof(uint16_t) + sizeof(uint16_t);
-  std::queue<std::vector<uint64_t>> *input_que;
+  std::queue<std::vector<dgl_id_t>> *input_que;
   std::queue<std::vector<block_t>>  *output_que;
   std::unordered_map<uint64_t, neighbor_sampler_prog_t> prog_que;
-  void inline send_query(Communicator *comm, uint16_t dstrank, uint16_t depth, uint64_t req_id, uint64_t *nodes, uint16_t len, uint64_t ppt);
+  void inline send_query(Communicator *comm, uint16_t dstrank, uint16_t depth, uint64_t req_id, dgl_id_t *nodes, uint16_t len, uint64_t ppt);
   void inline send_response(Communicator *comm, uint16_t depth, uint64_t req_id, edge_elem_t *edges, uint16_t len, uint64_t ppt);
   void inline recv_query(Communicator *comm, uint16_t depth, uint64_t ppt, uint64_t req_id, uint16_t len, const void *buffer);
   void inline recv_response(Communicator *comm, uint16_t depth, uint64_t ppt, uint64_t req_id, uint16_t len, const void *buffer);
-  void scatter(Communicator *comm, uint16_t depth, uint64_t req_id, std::vector<uint64_t> &&seeds, uint64_t ppt);
+  void scatter(Communicator *comm, uint16_t depth, uint64_t req_id, std::vector<dgl_id_t> &&seeds, uint64_t ppt);
 public:
   NeighborSampler(neighbor_sampler_arg_t &&arg,
-    std::queue<std::vector<uint64_t>> *input,
+    std::queue<std::vector<dgl_id_t>> *input,
     std::queue<std::vector<block_t>> *output);
   void recv(Communicator *comm, const void *buffer, size_t length);
   void progress(Communicator *comm);

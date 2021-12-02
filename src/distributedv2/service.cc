@@ -10,7 +10,7 @@ namespace distributedv2 {
 
 
 NeighborSampler::NeighborSampler(neighbor_sampler_arg_t &&arg,
-  std::queue<std::vector<uint64_t>> *input,
+  std::queue<std::vector<dgl_id_t>> *input,
   std::queue<std::vector<block_t>> *output)
   : rank(arg.rank)
   , size(arg.size)
@@ -24,7 +24,7 @@ NeighborSampler::NeighborSampler(neighbor_sampler_arg_t &&arg,
 }
 
 void inline NeighborSampler::send_query(Communicator *comm, uint16_t dstrank, uint16_t depth, uint64_t req_id, uint64_t *nodes, uint16_t len, uint64_t ppt) {
-  size_t data_len = HEADER_LEN + len * sizeof(uint64_t);
+  size_t data_len = HEADER_LEN + len * sizeof(dgl_id_t);
   size_t offset = 0;
   std::unique_ptr<uint8_t[]> data = std::unique_ptr<uint8_t[]>(new uint8_t[data_len]);
   *(uint64_t *)PTR_BYTE_OFFSET(data.get(), offset) = (req_id<<1);
@@ -35,7 +35,7 @@ void inline NeighborSampler::send_query(Communicator *comm, uint16_t dstrank, ui
   offset += sizeof(uint16_t);
   *(uint16_t *)PTR_BYTE_OFFSET(data.get(), offset) = len;
   offset += sizeof(uint16_t);
-  std::memcpy(PTR_BYTE_OFFSET(data.get(), offset), nodes, len * sizeof(uint64_t));
+  std::memcpy(PTR_BYTE_OFFSET(data.get(), offset), nodes, len * sizeof(dgl_id_t));
   comm->post(dstrank, sid, std::move(data), data_len);
 }
 
@@ -56,7 +56,7 @@ void inline NeighborSampler::send_response(Communicator *comm, uint16_t depth, u
   comm->post(dstrank, sid, std::move(data), data_len);
 }
 
-void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_id, std::vector<uint64_t> &&seeds, uint64_t ppt) {
+void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_id, std::vector<dgl_id_t> &&seeds, uint64_t ppt) {
   CHECK(ppt > 0);
   uint64_t rem_ppt = ppt;
   std::sort(seeds.begin(), seeds.end());
@@ -89,12 +89,12 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
     rem_ppt -= cur_ppt;
     // self request
     if (req_id % size == rank) {
-      uint64_t src, dst, id;
-      std::vector<uint64_t> next_seeds;
+      dgl_id_t src, dst, id;
+      std::vector<dgl_id_t> next_seeds;
       for (size_t idx = 0; idx < edge_len; idx++) {
-        src = *(uint64_t *)PTR_BYTE_OFFSET(edge.src->data, sizeof(uint64_t) * idx);
-        dst = *(uint64_t *)PTR_BYTE_OFFSET(edge.dst->data, sizeof(uint64_t) * idx);
-        id = *(uint64_t *)PTR_BYTE_OFFSET(edge.id->data, sizeof(uint64_t) * idx);
+        src = *(dgl_id_t *)PTR_BYTE_OFFSET(edge.src->data, sizeof(dgl_id_t) * idx);
+        dst = *(dgl_id_t *)PTR_BYTE_OFFSET(edge.dst->data, sizeof(dgl_id_t) * idx);
+        id = *(dgl_id_t *)PTR_BYTE_OFFSET(edge.id->data, sizeof(dgl_id_t) * idx);
         LOG(INFO) << "idx=" << idx << " src=" << src << " dst=" << dst;
         prog_que[req_id].blocks[depth].push_back(edge_elem_t{src,dst,id});
         next_seeds.push_back(src);
@@ -117,11 +117,11 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
     // other request
     } else {
       std::vector<edge_elem_t> edges(edge_len);
-      std::vector<uint64_t> next_seeds;
+      std::vector<dgl_id_t> next_seeds;
       for (size_t idx = 0; idx < edge_len; idx++) {
-        edges[idx].src = *(uint64_t *)PTR_BYTE_OFFSET(edge.src->data, sizeof(uint64_t) * idx);
-        edges[idx].dst = *(uint64_t *)PTR_BYTE_OFFSET(edge.dst->data, sizeof(uint64_t) * idx);
-        edges[idx].id = *(uint64_t *)PTR_BYTE_OFFSET(edge.id->data, sizeof(uint64_t) * idx);
+        edges[idx].src = *(dgl_id_t *)PTR_BYTE_OFFSET(edge.src->data, sizeof(dgl_id_t) * idx);
+        edges[idx].dst = *(dgl_id_t *)PTR_BYTE_OFFSET(edge.dst->data, sizeof(dgl_id_t) * idx);
+        edges[idx].id = *(dgl_id_t *)PTR_BYTE_OFFSET(edge.id->data, sizeof(dgl_id_t) * idx);
         LOG(INFO) << "idx=" << idx << " src=" << edges[idx].src << " dst=" << edges[idx].dst;
         next_seeds.push_back(edges[idx].src);
       }
@@ -136,8 +136,8 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
 }
 
 void inline NeighborSampler::recv_query(Communicator *comm, uint16_t depth, uint64_t ppt, uint64_t req_id, uint16_t len, const void *buffer) {
-  std::vector<uint64_t> seeds(len);
-  std::memcpy(seeds.data(), buffer, sizeof(uint64_t) * len);
+  std::vector<dgl_id_t> seeds(len);
+  std::memcpy(seeds.data(), buffer, sizeof(dgl_id_t) * len);
   scatter(comm, depth, req_id, std::move(seeds), ppt);
 }
 
@@ -177,13 +177,13 @@ void NeighborSampler::recv(Communicator *comm, const void *buffer, size_t length
     CHECK(offset + sizeof(edge_elem_t) * data_length == length);
   } else {
     recv_query(comm, depth, ppt, shifted_id>>1, data_length, PTR_BYTE_OFFSET(buffer, offset));
-    CHECK(offset + sizeof(uint64_t) * data_length == length);
+    CHECK(offset + sizeof(dgl_id_t) * data_length == length);
   }
 }
 
 void NeighborSampler::progress(Communicator *comm) {
   while (!input_que->empty()) {
-    std::vector<uint64_t> seeds = input_que->front();
+    std::vector<dgl_id_t> seeds = input_que->front();
     input_que->pop();
     prog_que[req_id] = neighbor_sampler_prog_t(num_layers);
     scatter(comm, 0, req_id, std::move(seeds), PPT_ALL);
