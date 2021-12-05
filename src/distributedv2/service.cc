@@ -4,6 +4,8 @@
 #include <sstream>
 #include <memory>
 #include <algorithm>
+#include <numeric>
+#include <random>
 
 namespace dgl {
 namespace distributedv2 {
@@ -17,10 +19,15 @@ NeighborSampler::NeighborSampler(neighbor_sampler_arg_t &&arg,
   , node_slit((arg.num_nodes + arg.size - 1) / arg.size)
   , local_graph(arg.g)
   , num_layers(arg.num_layers)
+  , fanouts(arg.fanouts)
   , req_id(arg.rank)
   , input_que(input)
   , output_que(output)
   , prog_que({}) {
+  if (fanouts.empty()) {
+    fanouts.assign(num_layers, -1);
+  }
+  CHECK(fanouts.size() == num_layers);
 }
 
 void inline NeighborSampler::send_query(Communicator *comm, uint16_t dstrank, uint16_t depth, uint64_t req_id, uint64_t *nodes, uint16_t len, uint64_t ppt) {
@@ -60,13 +67,14 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
   CHECK(ppt > 0);
   uint64_t rem_ppt = ppt;
   std::sort(seeds.begin(), seeds.end());
+  std::minstd_rand0 engine(req_id ^ ppt ^ depth);
   for (uint16_t dstrank = 0, l, r = 0; dstrank < size; dstrank++) {
     l = r;
     while (r < seeds.size() && seeds[r] / node_slit == dstrank) {
       r++;
     }
     if (l == r) continue;
-    // LOG(INFO) << "scatter depth=" << depth <<  " rank=" << rank << " dstrank=" << dstrank;
+    // LOG(INFO) << "scatter depth=" << depth <<  " rank=" << rank << " dstrank=" << dstrank << "req_id" << req_id;
     for (uint16_t i = l; i < r; i++) {
       // LOG(INFO) << "i=" << i << " seeds[i]=" << seeds[i];
     }
@@ -79,11 +87,6 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
       continue;
     }
     // Handle query
-    std::vector<int> local_seeds(seeds.begin() + l, seeds.begin() + r);
-    dgl::EdgeArray edge = local_graph->InEdges(aten::VecToIdArray(std::move(local_seeds), 64));
-    int64_t edge_len = edge.id.NumElements();
-    // LOG(INFO) << "scatter rank=" << rank << " edge_len=" << edge_len << " size=";
-    bool fin = edge_len == 0 || depth + 1 == num_layers;
     uint64_t cur_ppt = (r == seeds.size()) ? rem_ppt : ppt * (r-l) / seeds.size();
     CHECK(cur_ppt > 0);
     rem_ppt -= cur_ppt;
@@ -91,15 +94,38 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
     if (req_id % size == rank) {
       dgl_id_t src, dst, id;
       std::vector<dgl_id_t> next_seeds;
-      for (size_t idx = 0; idx < edge_len; idx++) {
-        src = *(dgl_id_t *)PTR_BYTE_OFFSET(edge.src->data, sizeof(dgl_id_t) * idx);
-        dst = *(dgl_id_t *)PTR_BYTE_OFFSET(edge.dst->data, sizeof(dgl_id_t) * idx);
-        id = *(dgl_id_t *)PTR_BYTE_OFFSET(edge.id->data, sizeof(dgl_id_t) * idx);
-        // LOG(INFO) << "idx=" << idx << " src=" << src << " dst=" << dst;
-        prog_que[req_id].blocks[depth].push_back(edge_elem_t{src,dst,id});
-        next_seeds.push_back(src);
+      for (uint16_t dst_idx = l; dst_idx < r; dst_idx++) {
+        dgl::EdgeArray src_edges = local_graph->InEdges(aten::VecToIdArray(std::vector<dgl_id_t>{seeds[dst_idx]}, 64));
+        int64_t edge_len = src_edges.id.NumElements();
+        // LOG(INFO) << "dst_idx= " << dst_idx << " edge_len=" << edge_len;
+        if (fanouts[depth] < 0 || edge_len <= fanouts[depth]) {
+          for (uint16_t idx = 0; idx < edge_len; idx++) {
+            src = *(dgl_id_t *)PTR_BYTE_OFFSET(src_edges.src->data, sizeof(dgl_id_t) * idx);
+            dst = *(dgl_id_t *)PTR_BYTE_OFFSET(src_edges.dst->data, sizeof(dgl_id_t) * idx);
+            id = *(dgl_id_t *)PTR_BYTE_OFFSET(src_edges.id->data, sizeof(dgl_id_t) * idx);
+            // LOG(INFO) << "self all: idx=" << idx << " src=" << src << " dst=" << dst;
+            prog_que[req_id].blocks[depth].push_back(edge_elem_t{src,dst,id});
+            next_seeds.push_back(src);
+          }
+        } else {
+          // sampling
+          std::vector<uint16_t> seq(edge_len);
+          std::iota(seq.begin(), seq.end(), 0);
+          for (uint16_t idx = edge_len-1; idx >= fanouts[depth]; idx--) {
+            std::swap(seq[idx], seq[engine() % idx]);
+          }
+          for (uint16_t idx = 0; idx < fanouts[depth]; idx++) {
+            src = *(dgl_id_t *)PTR_BYTE_OFFSET(src_edges.src->data, sizeof(dgl_id_t) * idx);
+            dst = *(dgl_id_t *)PTR_BYTE_OFFSET(src_edges.dst->data, sizeof(dgl_id_t) * idx);
+            id = *(dgl_id_t *)PTR_BYTE_OFFSET(src_edges.id->data, sizeof(dgl_id_t) * idx);
+            // LOG(INFO) << "self sample: idx=" << idx << " src=" << src << " dst=" << dst;
+            prog_que[req_id].blocks[depth].push_back(edge_elem_t{src,dst,id});
+            next_seeds.push_back(src);
+          }
+        }
       }
-      if (fin) {
+      // LOG(INFO) << "next_seeds.size()" << next_seeds.size();
+      if (next_seeds.size() == 0 || depth + 1 == num_layers) {
         prog_que[req_id].ppt += cur_ppt;
         // LOG(INFO) << "req_id=" << req_id << " ppt=" << ppt;
         if (prog_que[req_id].ppt == PPT_ALL) {
@@ -118,19 +144,43 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
       }
     // other request
     } else {
-      std::vector<edge_elem_t> edges(edge_len);
+      std::vector<edge_elem_t> edges;
       std::vector<dgl_id_t> next_seeds;
-      for (size_t idx = 0; idx < edge_len; idx++) {
-        edges[idx].src = *(dgl_id_t *)PTR_BYTE_OFFSET(edge.src->data, sizeof(dgl_id_t) * idx);
-        edges[idx].dst = *(dgl_id_t *)PTR_BYTE_OFFSET(edge.dst->data, sizeof(dgl_id_t) * idx);
-        edges[idx].id = *(dgl_id_t *)PTR_BYTE_OFFSET(edge.id->data, sizeof(dgl_id_t) * idx);
-        // LOG(INFO) << "idx=" << idx << " src=" << edges[idx].src << " dst=" << edges[idx].dst;
-        next_seeds.push_back(edges[idx].src);
+      for (uint16_t dst_idx = l; dst_idx < r; dst_idx++) {
+        dgl::EdgeArray src_edges = local_graph->InEdges(aten::VecToIdArray(std::vector<dgl_id_t>{seeds[dst_idx]}, 64));
+        int64_t edge_len = src_edges.id.NumElements();
+        if (fanouts[depth] < 0 || edge_len <= fanouts[depth]) {
+          for (uint16_t idx = 0; idx < edge_len; idx++) {
+            edge_elem_t elem;
+            elem.src = *(dgl_id_t *)PTR_BYTE_OFFSET(src_edges.src->data, sizeof(dgl_id_t) * idx);
+            elem.dst = *(dgl_id_t *)PTR_BYTE_OFFSET(src_edges.dst->data, sizeof(dgl_id_t) * idx);
+            elem.id = *(dgl_id_t *)PTR_BYTE_OFFSET(src_edges.id->data, sizeof(dgl_id_t) * idx);
+            // LOG(INFO) << "other all: idx=" << idx << " src=" << elem.src << " dst=" << elem.dst;
+            next_seeds.push_back(elem.src);
+            edges.push_back(std::move(elem));
+          }
+        } else {
+          // sampling
+          std::vector<uint16_t> seq(edge_len);
+          std::iota(seq.begin(), seq.end(), 0);
+          for (uint16_t idx = edge_len-1; idx >= fanouts[depth]; idx--) {
+            std::swap(seq[idx], seq[engine() % idx]);
+          }
+          for (uint16_t idx = 0; idx < fanouts[depth]; idx++) {
+            edge_elem_t elem;
+            elem.src = *(dgl_id_t *)PTR_BYTE_OFFSET(src_edges.src->data, sizeof(dgl_id_t) * idx);
+            elem.dst = *(dgl_id_t *)PTR_BYTE_OFFSET(src_edges.dst->data, sizeof(dgl_id_t) * idx);
+            elem.id = *(dgl_id_t *)PTR_BYTE_OFFSET(src_edges.id->data, sizeof(dgl_id_t) * idx);
+            // LOG(INFO) << "other sample: idx=" << idx << " src=" << elem.src << " dst=" << elem.dst;
+            next_seeds.push_back(elem.src);
+            edges.push_back(std::move(elem));
+          }
+        }
       }
-      if (fin) {
-        send_response(comm, depth, req_id, edges.data(), edge_len, cur_ppt);
+      if (next_seeds.size() == 0 || depth + 1 == num_layers) {
+        send_response(comm, depth, req_id, edges.data(), edges.size(), cur_ppt);
       } else {
-        send_response(comm, depth, req_id, edges.data(), edge_len, 1);
+        send_response(comm, depth, req_id, edges.data(), edges.size(), 1);
         scatter(comm, depth + 1, req_id, std::move(next_seeds), cur_ppt - 1);
       }
     }
