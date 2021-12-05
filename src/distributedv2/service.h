@@ -56,7 +56,7 @@ struct neighbor_sampler_arg_t {
   uint64_t num_nodes;
   uint16_t num_layers;
   GraphRef g;
-  std::vector<int> fanouts;
+  int16_t *fanouts;
 };
 
 /**
@@ -68,7 +68,7 @@ struct neighbor_sampler_arg_t {
 class NeighborSampler: public Service {
   GraphRef local_graph;
   uint16_t num_layers;
-  std::vector<int> fanouts;
+  std::vector<int16_t> fanouts;
   int rank, size;
   uint64_t node_slit;
   uint64_t req_id;
