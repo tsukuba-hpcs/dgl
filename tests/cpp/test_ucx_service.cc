@@ -3,6 +3,7 @@
 #include <dgl/runtime/object.h>
 #include "../src/distributedv2/context.h"
 #include "../src/distributedv2/service.h"
+#include "../src/distributedv2/neighbor.h"
 
 using namespace dgl::distributedv2;
 
