@@ -488,8 +488,61 @@ TEST_F(ServTest, FANOUT_TEST1) {
   ASSERT_EQ(blocks.size(), 2);
   ASSERT_EQ(blocks[0].size(), 1);
   ASSERT_EQ(blocks[1].size(), 1);
-  ASSERT_EQ(blocks[0][0].src, 4);
+  ASSERT_EQ(blocks[0][0].src, 5);
   ASSERT_EQ(blocks[0][0].dst, 0);
-  ASSERT_EQ(blocks[1][0].src, 3);
-  ASSERT_EQ(blocks[1][0].dst, 4);
+  ASSERT_EQ(blocks[1][0].src, 1);
+  ASSERT_EQ(blocks[1][0].dst, 5);
+}
+
+
+TEST_F(ServTest, FANOUT_KARATE_CLUB_1) {
+  {
+    dgl::IdArray edge0_src(dgl::aten::VecToIdArray(std::vector<int>{0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,2,3,3,3,4,4,5,5,5,6},64))
+                ,edge0_dst(dgl::aten::VecToIdArray(std::vector<int>{1,2,3,4,5,6,7,8,10,11,12,13,2,3,7,13,3,7,8,9,13,7,12,13,6,10,6,10,16,16},64))
+                ,edge1_src(dgl::aten::VecToIdArray(std::vector<int>{0,0,0,0,1,1,1,1,2,2,2,8,8,8,9,13,14,14,15,15,18,18,19,20,20,22,22,23,23,23,23,23,24,24,24,25,26,26,27,28,28,29,29,30,30,31,31,32},64))
+                ,edge1_dst(dgl::aten::VecToIdArray(std::vector<int>{17,19,21,31,17,19,21,30,27,28,32,30,32,33,33,33,32,33,32,33,32,33,33,32,33,32,33,25,27,29,32,33,25,27,31,31,29,33,33,31,33,32,33,32,33,32,33,33},64));
+    std::vector<int16_t> fanouts{5};
+    neighbor_sampler_arg_t arg0 = {
+      .rank = 0,
+      .size = 2,
+      .num_nodes = 34,
+      .num_layers = 1,
+      .g = dgl::GraphRef(dgl::Graph::CreateFromCOO(34, edge0_src, edge0_dst)),
+      .fanouts = fanouts.data(),
+    };
+    neighbor_sampler_arg_t arg1 = {
+      .rank = 1,
+      .size = 2,
+      .num_nodes = 34,
+      .num_layers = 1,
+      .g = dgl::GraphRef(dgl::Graph::CreateFromCOO(34, edge1_src, edge1_dst)),
+      .fanouts = fanouts.data(),
+    };
+    auto sampler0 =
+      std::unique_ptr<NeighborSampler>(new NeighborSampler(std::move(arg0), &input0, &output0));
+    auto sampler1 =
+      std::unique_ptr<NeighborSampler>(new NeighborSampler(std::move(arg1), &input1, &output1));
+
+    sm0.add_service(std::move(sampler0));
+    sm1.add_service(std::move(sampler1));
+  }
+  std::vector<uint64_t> seeds{33};
+  input0.push(std::move(seeds));
+  while (output0.empty()) {
+    sm0.progress();
+    sm1.progress();
+  }
+  auto blocks = output0.front();
+  ASSERT_EQ(blocks.size(), 1);
+  ASSERT_EQ(blocks[0].size(), 5);
+  ASSERT_EQ(blocks[0][0].src, 14);
+  ASSERT_EQ(blocks[0][0].dst, 33);
+  ASSERT_EQ(blocks[0][1].src, 20);
+  ASSERT_EQ(blocks[0][1].dst, 33);
+  ASSERT_EQ(blocks[0][2].src, 22);
+  ASSERT_EQ(blocks[0][2].dst, 33);
+  ASSERT_EQ(blocks[0][3].src, 23);
+  ASSERT_EQ(blocks[0][3].dst, 33);
+  ASSERT_EQ(blocks[0][4].src, 30);
+  ASSERT_EQ(blocks[0][4].dst, 33);
 }
