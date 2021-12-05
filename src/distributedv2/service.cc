@@ -96,7 +96,7 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
       for (uint16_t dst_idx = l; dst_idx < r; dst_idx++) {
         dgl::EdgeArray src_edges = local_graph->InEdges(aten::VecToIdArray(std::vector<dgl_id_t>{seeds[dst_idx]}, 64));
         int64_t edge_len = src_edges.id.NumElements();
-        LOG(INFO) << "dst_idx= " << dst_idx << " edge_len=" << edge_len << "depth=" << depth << "fanouts[depth]= " << fanouts[depth];
+        // LOG(INFO) << "dst_idx= " << dst_idx << " edge_len=" << edge_len << "depth=" << depth << "fanouts[depth]= " << fanouts[depth];
         if (fanouts[depth] < 0 || edge_len <= fanouts[depth]) {
           for (uint16_t idx = 0; idx < edge_len; idx++) {
             src = *(dgl_id_t *)PTR_BYTE_OFFSET(src_edges.src->data, sizeof(dgl_id_t) * idx);
@@ -117,7 +117,7 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
             src = *(dgl_id_t *)PTR_BYTE_OFFSET(src_edges.src->data, sizeof(dgl_id_t) * idx);
             dst = *(dgl_id_t *)PTR_BYTE_OFFSET(src_edges.dst->data, sizeof(dgl_id_t) * idx);
             id = *(dgl_id_t *)PTR_BYTE_OFFSET(src_edges.id->data, sizeof(dgl_id_t) * idx);
-            LOG(INFO) << "self sample: idx=" << idx << " src=" << src << " dst=" << dst;
+            // LOG(INFO) << "self sample: idx=" << idx << " src=" << src << " dst=" << dst;
             prog_que[req_id].blocks[depth].push_back(edge_elem_t{src,dst,id});
             next_seeds.push_back(src);
           }
@@ -148,7 +148,7 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
       for (uint16_t dst_idx = l; dst_idx < r; dst_idx++) {
         dgl::EdgeArray src_edges = local_graph->InEdges(aten::VecToIdArray(std::vector<dgl_id_t>{seeds[dst_idx]}, 64));
         int64_t edge_len = src_edges.id.NumElements();
-        LOG(INFO) << "dst_idx= " << dst_idx << " edge_len=" << edge_len << "depth=" << depth << "fanouts[depth]= " << fanouts[depth];
+        // LOG(INFO) << "dst_idx= " << dst_idx << " edge_len=" << edge_len << "depth=" << depth << "fanouts[depth]= " << fanouts[depth];
         if (fanouts[depth] < 0 || edge_len <= fanouts[depth]) {
           for (uint16_t idx = 0; idx < edge_len; idx++) {
             edge_elem_t elem;
@@ -171,7 +171,7 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
             elem.src = *(dgl_id_t *)PTR_BYTE_OFFSET(src_edges.src->data, sizeof(dgl_id_t) * idx);
             elem.dst = *(dgl_id_t *)PTR_BYTE_OFFSET(src_edges.dst->data, sizeof(dgl_id_t) * idx);
             elem.id = *(dgl_id_t *)PTR_BYTE_OFFSET(src_edges.id->data, sizeof(dgl_id_t) * idx);
-            LOG(INFO) << "other sample: idx=" << idx << " src=" << elem.src << " dst=" << elem.dst;
+            // LOG(INFO) << "other sample: idx=" << idx << " src=" << elem.src << " dst=" << elem.dst;
             next_seeds.push_back(elem.src);
             edges.push_back(std::move(elem));
           }
