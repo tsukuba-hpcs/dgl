@@ -42,8 +42,9 @@ void Communicator::create_endpoints(std::string addrs) {
     const ucp_address_t* addr =
       reinterpret_cast<const ucp_address_t *>(&addrs[addrlen * cur]);
     ucp_ep_params_t params = {
-      .field_mask = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS,
+      .field_mask = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS | UCP_EP_PARAM_FIELD_ERR_HANDLING_MODE,
       .address = addr,
+      .err_mode = UCP_ERR_HANDLING_MODE_PEER,
     };
     if ((status = ucp_ep_create(ucp_worker, &params, &eps[cur])) != UCS_OK) {
       LOG(FATAL) << "rank=" << rank
@@ -53,9 +54,48 @@ void Communicator::create_endpoints(std::string addrs) {
 }
 
 Communicator::~Communicator() {
-  for (int cur = 0; cur != size; cur++) {
+  ucs_status_t status;
+  ucs_status_ptr_t req;
+  LOG(INFO) << "mem_handlers.size()= " << mem_handlers.size();
+  for (int id = 0; id < mem_handlers.size(); id++) {
+    LOG(INFO) << "id= " << id << " ucp_rkey_buffer_release";
+    CHECK(mem_handlers[id].rkey_buf != NULL);
+    ucp_rkey_buffer_release(mem_handlers[id].rkey_buf);
+    for (int cur = 0; cur < size; cur++) {
+      if (cur == rank) continue;
+      CHECK(mem_handlers[id].rkey[cur] != NULL);
+      ucp_rkey_destroy(mem_handlers[id].rkey[cur]);
+    }
+    status = ucp_mem_unmap(ucp_context, mem_handlers[id].mem);
+    if (status != UCS_OK) {
+      LOG(FATAL) << "ucp_mem_unmap failed with " << ucs_status_string(status); 
+    }
+  }
+  LOG(INFO) << "rank= " << rank <<  " ucp_ep_destroy";
+  ucp_request_param_t params = {
+    .op_attr_mask = UCP_OP_ATTR_FIELD_FLAGS,
+    .flags = UCP_EP_CLOSE_MODE_FLUSH,
+  };
+  for (int cur = 0; cur < size; cur++) {
     if (cur == rank) continue;
-    ucp_ep_destroy(eps[cur]);
+    req = ucp_ep_close_nbx(eps[cur], &params);
+    if (req == NULL) continue;
+    if (req != NULL && UCS_PTR_IS_ERR(req)) {
+      LOG(FATAL) << "ucp_ep_close_nbx failed with"
+        << ucs_status_string(UCS_PTR_STATUS(req));
+    }
+    status = ucp_request_check_status(req);
+    if (status == UCS_INPROGRESS) {
+      do {
+        ucp_worker_progress(ucp_worker);
+        status = UCS_PTR_STATUS(req);
+        LOG(INFO) << "ucp_ep_close_nbx progress";
+      } while (status == UCS_INPROGRESS && req != NULL);
+      if (status != UCS_OK) {
+        LOG(FATAL) << "ucp_ep_close_nbx failed with"
+          << ucs_status_string(status);
+      }
+    }
   }
   ucp_worker_release_address(ucp_worker, addr);
   ucp_worker_destroy(ucp_worker);
@@ -224,6 +264,57 @@ void Communicator::progress() {
 }
 
 
+unsigned Communicator::register_mem(void *buffer, size_t length) {
+  ucs_status_t status;
+  ucp_mem_map_params_t params = {
+    .field_mask =
+      UCP_MEM_MAP_PARAM_FIELD_ADDRESS | UCP_MEM_MAP_PARAM_FIELD_LENGTH,
+    .address = buffer,
+    .length = length,
+  };
+  unsigned id = mem_handlers.size();
+  ucp_mem_h mem;
+  void *rkey_buf;
+  size_t rkey_buf_len;
+  status = ucp_mem_map(ucp_context, &params, &mem);
+  if (status != UCS_OK) {
+    LOG(FATAL) << "ucp_mem_map failed with "
+      << ucs_status_string(status);
+  }
+  status = ucp_rkey_pack(ucp_context, mem, &rkey_buf, &rkey_buf_len);
+  if (status != UCS_OK) {
+    LOG(FATAL) << "ucp_rkey_pack failed with "
+      << ucs_status_string(status);
+  }
+  mem_handlers.push_back(comm_mem_handler_t{
+    .mem = mem,
+    .rkey_buf = rkey_buf,
+    .rkey_buf_len = rkey_buf_len,
+  });
+  return id;
+}
+
+std::pair<void*, size_t> Communicator::get_rkey_buf(unsigned id) {
+  CHECK(mem_handlers.size() > id);
+  return std::make_pair(mem_handlers[id].rkey_buf, mem_handlers[id].rkey_buf_len);
+}
+
+void Communicator::create_rkey(unsigned id, const void *buffer, size_t length) {
+  CHECK(mem_handlers.size() > id);
+  CHECK(mem_handlers[id].rkey_buf_len * size == length);
+  mem_handlers[id].rkey.resize(size);
+  ucs_status_t status;
+  for (int srcrank = 0; srcrank < size; srcrank++) {
+    if (srcrank == rank) continue;
+    status = ucp_ep_rkey_unpack(eps[srcrank],
+      UCS_PTR_BYTE_OFFSET(buffer, mem_handlers[id].rkey_buf_len * srcrank),
+      &mem_handlers[id].rkey[srcrank]);
+    if (status != UCS_OK) {
+      LOG(FATAL) << "ucp_ep_rkey_unpack failed with "
+      << ucs_status_string(status);
+    }
+  }
+}
 
 }
 }

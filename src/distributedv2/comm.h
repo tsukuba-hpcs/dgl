@@ -51,6 +51,13 @@ struct comm_recv_handler_t {
   comm_cb_handler_t cb;
 };
 
+struct comm_mem_handler_t {
+  ucp_mem_h mem;
+  void *rkey_buf;
+  size_t rkey_buf_len;
+  std::vector<ucp_rkey_h> rkey;
+};
+
 class Communicator {
   int rank;
   int size;
@@ -61,6 +68,7 @@ class Communicator {
   std::vector<ucp_ep_h> eps;
   IovPool pool;
   std::vector<comm_recv_handler_t> recv_handlers;
+  std::vector<comm_mem_handler_t> mem_handlers;
   std::vector<std::vector<iov_pool_item_t*>> chunks;
   static ucs_status_t recv_cb(
     void *arg,
@@ -75,6 +83,9 @@ public:
   ~Communicator();
   std::pair<ucp_address_t*, int> get_workeraddr();
   unsigned add_recv_handler(void *arg, comm_cb_handler_t cb);
+  unsigned register_mem(void *buffer, size_t length);
+  std::pair<void*, size_t> get_rkey_buf(unsigned id);
+  void create_rkey(unsigned id, const void *buffer, size_t length);
   void post(int rank, unsigned id, std::unique_ptr<uint8_t[]> &&data, size_t length);
   void create_endpoints(std::string addrs);
   void progress();
