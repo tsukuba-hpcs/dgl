@@ -22,13 +22,11 @@ DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2CreateContext")
 DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2GetWorkerAddr")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
   ContextRef ctx = args[0];
-  *rv = ctx->comm.get_workeraddr();
-});
-
-DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2GetWorkerAddrlen")
-.set_body([] (DGLArgs args, DGLRetValue* rv) {
-  ContextRef ctx = args[0];
-  *rv = ctx->comm.get_workerlen();
+  List<Value> ret;
+  auto p = ctx->comm.get_workeraddr();
+  ret.push_back(Value(MakeValue(p.first)));
+  ret.push_back(Value(MakeValue(p.second)));
+  *rv = ret;
 });
 
 DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2CreateEndpoints")

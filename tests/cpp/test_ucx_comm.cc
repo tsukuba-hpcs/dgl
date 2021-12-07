@@ -10,10 +10,11 @@ class CommTest : public ::testing::Test {
 protected:
   Communicator comm0, comm1;
   CommTest() : comm0(0, 2, 100), comm1(1, 2, 100) {
-    int addrlen = comm0.get_workerlen();
-    std::string addrs(addrlen * 2, (char)0);
-    std::memcpy(&addrs[0], comm0.get_workeraddr(), addrlen);
-    std::memcpy(&addrs[addrlen], comm1.get_workeraddr(), addrlen);
+    auto p0 = comm0.get_workeraddr();
+    auto p1 = comm1.get_workeraddr();
+    std::string addrs(p0.second + p1.second, (char)0);
+    std::memcpy(&addrs[0], p0.first, p0.second);
+    std::memcpy(&addrs[p0.second], p1.first, p1.second);
     comm0.create_endpoints(addrs);
     comm1.create_endpoints(addrs);
   }

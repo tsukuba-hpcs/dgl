@@ -25,8 +25,7 @@ class Context(ObjectBase):
 
     def __gather_workeraddr(self, comm):
         # exchange worker address
-        addr= _CAPI_DistV2GetWorkerAddr(self)
-        addrlen = _CAPI_DistV2GetWorkerAddrlen(self)
+        addr, addrlen = _CAPI_DistV2GetWorkerAddr(self)
         UByteArr = c_ubyte * addrlen
         UByteArrPtr = POINTER(UByteArr)
         addr = cast(addr, UByteArrPtr)

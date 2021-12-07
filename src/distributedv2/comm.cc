@@ -29,12 +29,8 @@ Communicator::Communicator(int rank, int size, size_t buffer_len)
   }
 }
 
-ucp_address_t* Communicator::get_workeraddr() {
-  return addr;
-}
-
-int Communicator::get_workerlen() {
-  return static_cast<int>(addrlen);
+std::pair<ucp_address_t*, int> Communicator::get_workeraddr() {
+  return std::make_pair(addr, static_cast<int>(addrlen));
 }
 
 void Communicator::create_endpoints(std::string addrs) {

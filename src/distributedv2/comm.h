@@ -73,8 +73,7 @@ class Communicator {
 public:
   Communicator(int rank, int size, size_t buffer_len = (1<<20));
   ~Communicator();
-  ucp_address_t* get_workeraddr();
-  int get_workerlen();
+  std::pair<ucp_address_t*, int> get_workeraddr();
   unsigned add_recv_handler(void *arg, comm_cb_handler_t cb);
   void post(int rank, unsigned id, std::unique_ptr<uint8_t[]> &&data, size_t length);
   void create_endpoints(std::string addrs);
