@@ -19,6 +19,8 @@ namespace distributedv2 {
 
 typedef void (*comm_am_cb_t)(void *arg, const void *buffer, size_t length);
 
+typedef void (*comm_rma_cb_t)(void *arg, uint64_t id);
+
 #define MAX_IOV_CNT 16
 
 #define PTR_BYTE_OFFSET UCS_PTR_BYTE_OFFSET
@@ -52,11 +54,31 @@ struct am_handler_t {
 };
 
 struct rma_handler_t {
+  void *arg;
+  comm_rma_cb_t cb;
   ucp_mem_h mem;
   void *rkey_buf;
   size_t rkey_buf_len;
   std::vector<ucp_rkey_h> rkey;
   std::vector<uint64_t> address;
+  rma_handler_t(void *arg, comm_rma_cb_t cb,ucp_mem_h mem, void *rkey_buf, size_t rkey_buf_len)
+  : arg(arg), cb(cb), mem(mem), rkey_buf(rkey_buf), rkey_buf_len(rkey_buf_len) {}
+};
+
+struct rma_pool_item_t {
+  bool used;
+  rma_handler_t *handler;
+  uint64_t req_id;
+  rma_pool_item_t(rma_handler_t *handler);
+  void release();
+};
+
+class RmaPool {
+  std::vector<rma_pool_item_t> buffer;
+  size_t cursor;
+public:
+  RmaPool(size_t length);
+  int alloc(rma_pool_item_t** item, size_t req_id, rma_handler_t *handler);
 };
 
 class Communicator {
@@ -67,9 +89,9 @@ class Communicator {
   ucp_address_t* addr;
   size_t addrlen;
   std::vector<ucp_ep_h> eps;
-  IovPool pool;
+  // for Active Message
+  IovPool am_pool;
   std::vector<am_handler_t> recv_handlers;
-  std::vector<rma_handler_t> mem_handlers;
   std::vector<std::vector<iov_pool_item_t*>> chunks;
   static ucs_status_t recv_cb(
     void *arg,
@@ -78,7 +100,12 @@ class Communicator {
     void *data, size_t length,
     const ucp_am_recv_param_t *param);
   static void send_cb(void *request, ucs_status_t status, void *user_data);
-  void send(int rank, unsigned id, iov_pool_item_t *chunk);
+  void am_send(int rank, unsigned id, iov_pool_item_t *chunk);
+  // for Remote Memory Access
+  uint64_t rma_req_id;
+  RmaPool rma_pool;
+  std::vector<rma_handler_t> mem_handlers;
+  static void read_cb(void *request, ucs_status_t status, void *user_data);
 public:
   Communicator(int rank, int size, size_t buffer_len = (1<<20));
   ~Communicator();
@@ -89,10 +116,11 @@ public:
   unsigned add_am_handler(void *arg, comm_am_cb_t cb);
   void am_post(int rank, unsigned id, std::unique_ptr<uint8_t[]> &&data, size_t length);
   // for Remote Memory Access
-  unsigned add_rma_handler(void *buffer, size_t length);
+  unsigned add_rma_handler(void *buffer, size_t length, void *arg, comm_rma_cb_t cb);
   std::pair<void*, size_t> get_rkey_buf(unsigned id);
   void create_rkey(unsigned id, const void *buffer, size_t length);
-  void set_buffer_addr(unsigned id, const void *buffer, size_t length);
+  void set_buffer_addr(unsigned id, const intptr_t buffer, size_t length);
+  uint64_t rma_read(int rank, unsigned id, void *buffer, uint64_t offset, size_t length);
   // for Progress
   void progress();
 };
