@@ -34,6 +34,11 @@ protected:
     std::memcpy(&rkey_buf[r0.second], r1.first, r1.second);
     comm0.create_rkey(id, rkey_buf.data(), rkey_buf.size());
     comm1.create_rkey(id, rkey_buf.data(), rkey_buf.size());
+    std::vector<char> address(sizeof(uint64_t) * 2);
+    std::memcpy(&address[0], buf0.data(), sizeof(uint64_t));
+    std::memcpy(&address[sizeof(uint64_t)], buf1.data(), sizeof(uint64_t));
+    comm0.set_buffer_addr(id, address.data(), address.size());
+    comm1.set_buffer_addr(id, address.data(), address.size());
   }
 };
 

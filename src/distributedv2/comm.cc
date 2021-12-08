@@ -299,6 +299,20 @@ std::pair<void*, size_t> Communicator::get_rkey_buf(unsigned id) {
   return std::make_pair(mem_handlers[id].rkey_buf, mem_handlers[id].rkey_buf_len);
 }
 
+
+void Communicator::set_buffer_addr(unsigned id, const void *buffer, size_t length) {
+  CHECK(mem_handlers.size() > id);
+  CHECK(length = sizeof(uint64_t) * size);
+  mem_handlers[id].address.resize(size);
+  for (int srcrank = 0; srcrank < size; srcrank++) {
+    if (srcrank == rank) {
+      mem_handlers[id].address[srcrank] = NULL;
+    } else {
+      mem_handlers[id].address[srcrank] = *(uint64_t *)UCS_PTR_BYTE_OFFSET(buffer, sizeof(uint64_t) * srcrank);
+    }
+  }
+}
+
 void Communicator::create_rkey(unsigned id, const void *buffer, size_t length) {
   CHECK(mem_handlers.size() > id);
   CHECK(mem_handlers[id].rkey_buf_len * size == length);

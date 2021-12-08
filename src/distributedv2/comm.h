@@ -56,6 +56,7 @@ struct comm_mem_handler_t {
   void *rkey_buf;
   size_t rkey_buf_len;
   std::vector<ucp_rkey_h> rkey;
+  std::vector<uint64_t> address;
 };
 
 class Communicator {
@@ -81,13 +82,18 @@ class Communicator {
 public:
   Communicator(int rank, int size, size_t buffer_len = (1<<20));
   ~Communicator();
+  // for Endpoints
   std::pair<ucp_address_t*, int> get_workeraddr();
+  void create_endpoints(std::string addrs);
+  // for Active Message
   unsigned add_recv_handler(void *arg, comm_cb_handler_t cb);
+  void post(int rank, unsigned id, std::unique_ptr<uint8_t[]> &&data, size_t length);
+  // for Remote Memory Access
   unsigned register_mem(void *buffer, size_t length);
   std::pair<void*, size_t> get_rkey_buf(unsigned id);
   void create_rkey(unsigned id, const void *buffer, size_t length);
-  void post(int rank, unsigned id, std::unique_ptr<uint8_t[]> &&data, size_t length);
-  void create_endpoints(std::string addrs);
+  void set_buffer_addr(unsigned id, const void *buffer, size_t length);
+  // for Progress
   void progress();
 };
 
