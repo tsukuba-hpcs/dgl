@@ -58,8 +58,8 @@ TEST_F(ServTest, TEST1) {
     auto sampler1 =
       std::unique_ptr<NeighborSampler>(new NeighborSampler(std::move(arg1), &input1, &output1));
 
-    sm0.add_service(std::move(sampler0));
-    sm1.add_service(std::move(sampler1));
+    sm0.add_am_service(std::move(sampler0));
+    sm1.add_am_service(std::move(sampler1));
   }
 
   std::vector<uint64_t> seeds{0};
@@ -111,8 +111,8 @@ TEST_F(ServTest, KARATE_CLUB_1) {
     auto sampler1 =
       std::unique_ptr<NeighborSampler>(new NeighborSampler(std::move(arg1), &input1, &output1));
 
-    sm0.add_service(std::move(sampler0));
-    sm1.add_service(std::move(sampler1));
+    sm0.add_am_service(std::move(sampler0));
+    sm1.add_am_service(std::move(sampler1));
   }
   std::vector<uint64_t> seeds{33};
   input0.push(std::move(seeds));
@@ -186,8 +186,8 @@ TEST_F(ServTest, KARATE_CLUB_2) {
     auto sampler1 =
       std::unique_ptr<NeighborSampler>(new NeighborSampler(std::move(arg1), &input1, &output1));
 
-    sm0.add_service(std::move(sampler0));
-    sm1.add_service(std::move(sampler1));
+    sm0.add_am_service(std::move(sampler0));
+    sm1.add_am_service(std::move(sampler1));
   }
   std::vector<uint64_t> seeds{33};
   input0.push(std::move(seeds));
@@ -291,8 +291,8 @@ TEST_F(ServTest, KARATE_CLUB_3) {
     auto sampler1 =
       std::unique_ptr<NeighborSampler>(new NeighborSampler(std::move(arg1), &input1, &output1));
 
-    sm0.add_service(std::move(sampler0));
-    sm1.add_service(std::move(sampler1));
+    sm0.add_am_service(std::move(sampler0));
+    sm1.add_am_service(std::move(sampler1));
   }
   std::vector<uint64_t> seeds{33};
   input0.push(std::move(seeds));
@@ -370,8 +370,8 @@ TEST_F(ServTest, KARATE_CLUB_4) {
     auto sampler1 =
       std::unique_ptr<NeighborSampler>(new NeighborSampler(std::move(arg1), &input1, &output1));
 
-    sm0.add_service(std::move(sampler0));
-    sm1.add_service(std::move(sampler1));
+    sm0.add_am_service(std::move(sampler0));
+    sm1.add_am_service(std::move(sampler1));
   }
   std::vector<uint64_t> seeds{33};
   input0.push(std::move(seeds));
@@ -427,8 +427,8 @@ TEST_F(ServTest, KARATE_CLUB_5) {
     auto sampler1 =
       std::unique_ptr<NeighborSampler>(new NeighborSampler(std::move(arg1), &input1, &output1));
 
-    sm0.add_service(std::move(sampler0));
-    sm1.add_service(std::move(sampler1));
+    sm0.add_am_service(std::move(sampler0));
+    sm1.add_am_service(std::move(sampler1));
   }
   std::vector<uint64_t> seeds{33};
   input0.push(std::move(seeds));
@@ -475,8 +475,8 @@ TEST_F(ServTest, FANOUT_TEST1) {
     auto sampler1 =
       std::unique_ptr<NeighborSampler>(new NeighborSampler(std::move(arg1), &input1, &output1));
 
-    sm0.add_service(std::move(sampler0));
-    sm1.add_service(std::move(sampler1));
+    sm0.add_am_service(std::move(sampler0));
+    sm1.add_am_service(std::move(sampler1));
   }
 
   std::vector<uint64_t> seeds{0};
@@ -524,8 +524,8 @@ TEST_F(ServTest, FANOUT_KARATE_CLUB_1) {
     auto sampler1 =
       std::unique_ptr<NeighborSampler>(new NeighborSampler(std::move(arg1), &input1, &output1));
 
-    sm0.add_service(std::move(sampler0));
-    sm1.add_service(std::move(sampler1));
+    sm0.add_am_service(std::move(sampler0));
+    sm1.add_am_service(std::move(sampler1));
   }
   std::vector<uint64_t> seeds{33};
   input0.push(std::move(seeds));

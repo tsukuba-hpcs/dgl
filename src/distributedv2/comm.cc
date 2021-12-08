@@ -175,7 +175,7 @@ ucs_status_t Communicator::recv_cb(
   uint8_t iov_cnt = *((uint8_t*)header);
   CHECK(header_length == sizeof(uint8_t) + sizeof(size_t) * iov_cnt);
   size_t *iov_len = (size_t *)UCS_PTR_BYTE_OFFSET(header, sizeof(uint8_t));
-  comm_recv_handler_t *handler = (comm_recv_handler_t *)(arg);
+  am_handler_t *handler = (am_handler_t *)(arg);
   size_t offset = 0;
 
   for (size_t idx = 0; idx < iov_cnt; idx++) {
@@ -220,7 +220,7 @@ void Communicator::send(int rank, unsigned id, iov_pool_item_t *chunk) {
   }
 }
 
-void Communicator::post(int destrank, unsigned id, std::unique_ptr<uint8_t[]> &&data, size_t length) {
+void Communicator::am_post(int destrank, unsigned id, std::unique_ptr<uint8_t[]> &&data, size_t length) {
   if (chunks[destrank][id] == NULL) {
     CHECK(!pool.alloc(&chunks[destrank][id]));
   }
@@ -231,7 +231,7 @@ void Communicator::post(int destrank, unsigned id, std::unique_ptr<uint8_t[]> &&
   chunks[destrank][id]->append(std::move(data), length);
 }
 
-unsigned Communicator::add_recv_handler(void *arg, comm_cb_handler_t cb) {
+unsigned Communicator::add_am_handler(void *arg, comm_am_cb_t cb) {
   ucs_status_t status;
   unsigned id = recv_handlers.size();
   recv_handlers.push_back({arg, cb});
@@ -264,7 +264,7 @@ void Communicator::progress() {
 }
 
 
-unsigned Communicator::register_mem(void *buffer, size_t length) {
+unsigned Communicator::add_rma_handler(void *buffer, size_t length) {
   ucs_status_t status;
   ucp_mem_map_params_t params = {
     .field_mask =
@@ -286,7 +286,7 @@ unsigned Communicator::register_mem(void *buffer, size_t length) {
     LOG(FATAL) << "ucp_rkey_pack failed with "
       << ucs_status_string(status);
   }
-  mem_handlers.push_back(comm_mem_handler_t{
+  mem_handlers.push_back(rma_handler_t{
     .mem = mem,
     .rkey_buf = rkey_buf,
     .rkey_buf_len = rkey_buf_len,

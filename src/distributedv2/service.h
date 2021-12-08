@@ -23,28 +23,39 @@ namespace distributedv2 {
 
 class Service {
 public:
-  unsigned sid;
-  virtual void recv(Communicator *comm, const void *buffer, size_t length) = 0;
   virtual void progress(Communicator *comm) = 0;
 };
 
-struct sm_recv_cb_arg_t {
+class AMService: public Service {
+public:
+  unsigned am_id;
+  virtual void am_recv(Communicator *comm, const void *buffer, size_t length) = 0;
+};
+
+class RMAService: public Service {
+public:
+  unsigned rma_id;
+  virtual void rma_read_cb(Communicator *comm) = 0;
+};
+
+struct sm_cb_arg_t {
   Service *serv;
   Communicator *comm;
-  sm_recv_cb_arg_t(Service *serv, Communicator *comm)
-  : serv(std::move(serv)), comm(std::move(comm)) {};
+  sm_cb_arg_t(Service *serv, Communicator *comm)
+  : serv(serv), comm(comm) {};
 };
 
 class ServiceManager {
   std::vector<std::unique_ptr<Service>> servs;
-  std::vector<sm_recv_cb_arg_t> args;
+  std::vector<sm_cb_arg_t> args;
   Communicator *comm;
   std::atomic_bool shutdown;
   int rank, size;
-  static void recv_cb(void *arg, const void *buffer, size_t length);
+  static void am_recv_cb(void *arg, const void *buffer, size_t length);
 public:
   ServiceManager(int rank, int size, Communicator *comm);
-  void add_service(std::unique_ptr<Service> &&serv);
+  void add_am_service(std::unique_ptr<AMService> &&serv);
+  void add_rma_service(std::unique_ptr<RMAService> &&serv);
   void progress();
   static void run(ServiceManager *self);
 };

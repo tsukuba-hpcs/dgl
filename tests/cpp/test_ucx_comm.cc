@@ -40,13 +40,13 @@ TEST_F(CommTest, PING) {
     .buf = NULL,
     .count = 0};
   unsigned id;
-  id = comm0.add_recv_handler(&ctx, recv_cb);
+  id = comm0.add_am_handler(&ctx, recv_cb);
   ASSERT_EQ(id, 0);
-  id = comm1.add_recv_handler(NULL, recv_cb);
+  id = comm1.add_am_handler(NULL, recv_cb);
   ASSERT_EQ(id, 0);
   std::unique_ptr<uint8_t[]> data = std::unique_ptr<uint8_t[]>(new uint8_t[sizeof("Hello, world")]);
   std::strcpy((char *)data.get(), "Hello, world");
-  comm1.post(0, id, std::move(data), sizeof("Hello, world"));
+  comm1.am_post(0, id, std::move(data), sizeof("Hello, world"));
   comm1.progress();
   for (int trial = 0; trial < 10000; trial++) {
     comm0.progress();
@@ -62,12 +62,12 @@ TEST_F(CommTest, PING_MULTI) {
     .len = 0,
     .buf = NULL,
     .count = 0};
-  comm0.add_recv_handler(&ctx, recv_cb);
-  comm1.add_recv_handler(NULL, recv_cb);
+  comm0.add_am_handler(&ctx, recv_cb);
+  comm1.add_am_handler(NULL, recv_cb);
   for (size_t idx = 0; idx < 100; idx++) {
     std::unique_ptr<uint8_t[]> data = std::unique_ptr<uint8_t[]>(new uint8_t[sizeof("Hello, world")]);
     std::strcpy((char *)data.get(), "Hello, world");
-    comm1.post(0, 0, std::move(data), sizeof("Hello, world"));
+    comm1.am_post(0, 0, std::move(data), sizeof("Hello, world"));
     comm0.progress();
   }
   ASSERT_EQ(ctx.count, 0);
@@ -85,8 +85,8 @@ TEST_F(CommTest, REUSE_POOL) {
     .len = 0,
     .buf = NULL,
     .count = 0};
-  comm0.add_recv_handler(&ctx, recv_cb);
-  comm1.add_recv_handler(NULL, recv_cb);
+  comm0.add_am_handler(&ctx, recv_cb);
+  comm1.add_am_handler(NULL, recv_cb);
   size_t req_cnt = 0;
   while (ctx.count < 10000000) {
     comm0.progress();
@@ -95,7 +95,7 @@ TEST_F(CommTest, REUSE_POOL) {
       req_cnt++;
       std::unique_ptr<uint8_t[]> data = std::unique_ptr<uint8_t[]>(new uint8_t[sizeof("Hello, world")]);
       std::strcpy((char *)data.get(), "Hello, world");
-      comm1.post(0, 0, std::move(data), sizeof("Hello, world"));
+      comm1.am_post(0, 0, std::move(data), sizeof("Hello, world"));
     }
   }
   ASSERT_EQ(ctx.count, 10000000);
@@ -109,8 +109,8 @@ TEST_F(CommTest, REUSE_POOL_2) {
     .len = 0,
     .buf = NULL,
     .count = 0};
-  comm0.add_recv_handler(&ctx, recv_cb);
-  comm1.add_recv_handler(NULL, recv_cb);
+  comm0.add_am_handler(&ctx, recv_cb);
+  comm1.add_am_handler(NULL, recv_cb);
   size_t req_cnt = 0;
   while (ctx.count < 10000000) {
     comm0.progress();
@@ -120,7 +120,7 @@ TEST_F(CommTest, REUSE_POOL_2) {
       for (uint8_t idx = 0; idx < MAX_IOV_CNT; idx++) {
         std::unique_ptr<uint8_t[]> data = std::unique_ptr<uint8_t[]>(new uint8_t[sizeof("Hello, world")]);
         std::strcpy((char *)data.get(), "Hello, world");
-        comm1.post(0, 0, std::move(data), sizeof("Hello, world"));
+        comm1.am_post(0, 0, std::move(data), sizeof("Hello, world"));
       }
     }
   }

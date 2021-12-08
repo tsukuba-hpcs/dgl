@@ -37,7 +37,7 @@ void inline NeighborSampler::send_query(Communicator *comm, uint16_t dstrank, ui
   *(uint16_t *)PTR_BYTE_OFFSET(data.get(), offset) = len;
   offset += sizeof(uint16_t);
   std::memcpy(PTR_BYTE_OFFSET(data.get(), offset), nodes, len * sizeof(dgl_id_t));
-  comm->post(dstrank, sid, std::move(data), data_len);
+  comm->am_post(dstrank, am_id, std::move(data), data_len);
 }
 
 void inline NeighborSampler::send_response(Communicator *comm, uint16_t depth, uint64_t req_id, edge_elem_t *edges, uint16_t len, uint64_t ppt) {
@@ -54,7 +54,7 @@ void inline NeighborSampler::send_response(Communicator *comm, uint16_t depth, u
   *(uint16_t *)PTR_BYTE_OFFSET(data.get(), offset) = len;
   offset += sizeof(uint16_t);
   std::memcpy(PTR_BYTE_OFFSET(data.get(), offset), edges, len * sizeof(edge_elem_t));
-  comm->post(dstrank, sid, std::move(data), data_len);
+  comm->am_post(dstrank, am_id, std::move(data), data_len);
 }
 
 void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_id, std::vector<dgl_id_t> &&seeds, uint64_t ppt) {
@@ -207,7 +207,7 @@ void inline NeighborSampler::recv_response(Communicator *comm, uint16_t depth, u
   }
 }
 
-void NeighborSampler::recv(Communicator *comm, const void *buffer, size_t length) {
+void NeighborSampler::am_recv(Communicator *comm, const void *buffer, size_t length) {
   size_t offset = 0;
   uint64_t shifted_id;
   uint16_t depth, data_length;

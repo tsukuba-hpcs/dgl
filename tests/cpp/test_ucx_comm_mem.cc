@@ -23,9 +23,9 @@ protected:
     std::strcpy(buf0.data(), "HELLO");
     buf1.resize(sizeof("WORLD"));
     std::strcpy(buf1.data(), "WORLD");
-    unsigned id = comm0.register_mem(buf0.data(), sizeof("HELLO"));
+    unsigned id = comm0.add_rma_handler(buf0.data(), sizeof("HELLO"));
     CHECK(id == 0);
-    CHECK(comm1.register_mem(buf1.data(), sizeof("WORLD")) == id);
+    CHECK(comm1.add_rma_handler(buf1.data(), sizeof("WORLD")) == id);
     auto r0 = comm0.get_rkey_buf(id);
     auto r1 = comm1.get_rkey_buf(id);
     CHECK(r0.second == r1.second);

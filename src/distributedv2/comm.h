@@ -17,7 +17,7 @@ namespace dgl {
 namespace distributedv2 {
 
 
-typedef void (*comm_cb_handler_t)(void *arg, const void *buffer, size_t length);
+typedef void (*comm_am_cb_t)(void *arg, const void *buffer, size_t length);
 
 #define MAX_IOV_CNT 16
 
@@ -46,12 +46,12 @@ public:
   int alloc(iov_pool_item_t** item);
 };
 
-struct comm_recv_handler_t {
+struct am_handler_t {
   void *arg;
-  comm_cb_handler_t cb;
+  comm_am_cb_t cb;
 };
 
-struct comm_mem_handler_t {
+struct rma_handler_t {
   ucp_mem_h mem;
   void *rkey_buf;
   size_t rkey_buf_len;
@@ -68,8 +68,8 @@ class Communicator {
   size_t addrlen;
   std::vector<ucp_ep_h> eps;
   IovPool pool;
-  std::vector<comm_recv_handler_t> recv_handlers;
-  std::vector<comm_mem_handler_t> mem_handlers;
+  std::vector<am_handler_t> recv_handlers;
+  std::vector<rma_handler_t> mem_handlers;
   std::vector<std::vector<iov_pool_item_t*>> chunks;
   static ucs_status_t recv_cb(
     void *arg,
@@ -86,10 +86,10 @@ public:
   std::pair<ucp_address_t*, int> get_workeraddr();
   void create_endpoints(std::string addrs);
   // for Active Message
-  unsigned add_recv_handler(void *arg, comm_cb_handler_t cb);
-  void post(int rank, unsigned id, std::unique_ptr<uint8_t[]> &&data, size_t length);
+  unsigned add_am_handler(void *arg, comm_am_cb_t cb);
+  void am_post(int rank, unsigned id, std::unique_ptr<uint8_t[]> &&data, size_t length);
   // for Remote Memory Access
-  unsigned register_mem(void *buffer, size_t length);
+  unsigned add_rma_handler(void *buffer, size_t length);
   std::pair<void*, size_t> get_rkey_buf(unsigned id);
   void create_rkey(unsigned id, const void *buffer, size_t length);
   void set_buffer_addr(unsigned id, const void *buffer, size_t length);

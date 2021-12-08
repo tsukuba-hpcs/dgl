@@ -59,7 +59,7 @@ struct neighbor_sampler_arg_t {
  * Binary format of the response:
  * uint64_t (req_id<<1)+1 | uint64_t ppt | uint16_t depth | uint16_t edges' length | [uint64_t src_id uint64_t dst_id uint64_t edge_id] * length
  */
-class NeighborSampler: public Service {
+class NeighborSampler: public AMService {
   GraphRef local_graph;
   uint16_t num_layers;
   std::vector<int16_t> fanouts;
@@ -80,7 +80,7 @@ public:
   NeighborSampler(neighbor_sampler_arg_t &&arg,
     std::queue<std::vector<dgl_id_t>> *input,
     std::queue<std::vector<block_t>> *output);
-  void recv(Communicator *comm, const void *buffer, size_t length);
+  void am_recv(Communicator *comm, const void *buffer, size_t length);
   void progress(Communicator *comm);
 };
 
