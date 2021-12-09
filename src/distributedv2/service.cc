@@ -28,8 +28,18 @@ void ServiceManager::add_am_service(std::unique_ptr<AMService> &&serv) {
   CHECK(id == ((AMService *)servs.back().get())->am_id);
 }
 
-void ServiceManager::add_rma_service(std::unique_ptr<RMAService> &&serv) {
-  
+void ServiceManager::rma_recv_cb(void *arg, uint64_t req_id, void *address) {
+  sm_cb_arg_t *cbarg = (sm_cb_arg_t *)arg;
+  ((RMAService *)cbarg->serv)->rma_read_cb(cbarg->comm);
+}
+
+void ServiceManager::add_rma_service(std::unique_ptr<RMAService> &&serv,
+  void *buffer, size_t length) {
+  serv->rma_id = servs.size();
+  servs.push_back(std::move(serv));
+  sm_cb_arg_t arg(servs.back().get(), comm);
+  args.push_back(std::move(arg));
+  comm->add_rma_handler(buffer, length, &args.back(), rma_recv_cb);
 }
 
 void ServiceManager::progress() {

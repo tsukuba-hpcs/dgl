@@ -52,10 +52,11 @@ class ServiceManager {
   std::atomic_bool shutdown;
   int rank, size;
   static void am_recv_cb(void *arg, const void *buffer, size_t length);
+  static void rma_recv_cb(void *arg, uint64_t req_id, void *address);
 public:
   ServiceManager(int rank, int size, Communicator *comm);
   void add_am_service(std::unique_ptr<AMService> &&serv);
-  void add_rma_service(std::unique_ptr<RMAService> &&serv);
+  void add_rma_service(std::unique_ptr<RMAService> &&serv, void *buffer, size_t length);
   void progress();
   static void run(ServiceManager *self);
 };

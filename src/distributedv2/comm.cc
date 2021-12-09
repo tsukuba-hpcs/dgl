@@ -8,8 +8,7 @@ Communicator::Communicator(int rank, int size, size_t buffer_len)
 : rank(rank)
 , size(size)
 , am_pool(buffer_len)
-, rma_pool(buffer_len)
-, rma_req_id(1) {
+, rma_pool(buffer_len) {
   ucs_status_t status;
   ucp_params_t params = {
     .field_mask = UCP_PARAM_FIELD_FEATURES | UCP_PARAM_FIELD_ESTIMATED_NUM_EPS,
@@ -276,7 +275,7 @@ RmaPool::RmaPool(size_t length)
 : buffer(length), cursor(0) {
 }
 
-int RmaPool::alloc(rma_pool_item_t** item, size_t req_id, rma_handler_t *handler) {
+int RmaPool::alloc(rma_pool_item_t** item, size_t req_id, void *address, rma_handler_t *handler) {
   rma_pool_item_t *p = &buffer[cursor];
   if (p->used) {
     LOG(INFO) << "RmaPool alloc item failed: cursor= " << cursor;
@@ -284,6 +283,7 @@ int RmaPool::alloc(rma_pool_item_t** item, size_t req_id, rma_handler_t *handler
   }
   p->used = true;
   p->req_id = req_id;
+  p->address = address;
   p->handler = handler;
   *item = p;
   cursor = (cursor + 1) % buffer.size();
@@ -327,15 +327,14 @@ void Communicator::read_cb(void *request, ucs_status_t status, void *user_data) 
     return;
   }
   rma_pool_item_t *item = (rma_pool_item_t *)user_data;
-  item->handler->cb(item->handler->arg, item->req_id);
+  item->handler->cb(item->handler->arg, item->req_id, item->address);
   item->release();
 }
 
-uint64_t Communicator::rma_read(int rank, unsigned id, void *buffer, uint64_t offset, size_t length) {
-  uint64_t req_id = rma_req_id++;
+void Communicator::rma_read(int rank, unsigned id, uint64_t req_id, void *buffer, uint64_t offset, size_t length) {
   ucs_status_ptr_t status;
   rma_pool_item_t *item;
-  CHECK(!rma_pool.alloc(&item, req_id, &mem_handlers[id]));
+  CHECK(!rma_pool.alloc(&item, req_id, buffer, &mem_handlers[id]));
   ucp_request_param_t params = {
     .op_attr_mask = UCP_OP_ATTR_FIELD_CALLBACK | UCP_OP_ATTR_FIELD_USER_DATA,
     .cb = {
@@ -345,14 +344,15 @@ uint64_t Communicator::rma_read(int rank, unsigned id, void *buffer, uint64_t of
   };
   status = ucp_get_nbx(eps[rank], buffer, length, mem_handlers[id].address[rank], mem_handlers[id].rkey[rank], &params);
   if (status == NULL) {
-    return 0;
+    mem_handlers[id].cb(mem_handlers[id].arg, req_id, buffer);
+    return;
   }
   if (UCS_PTR_IS_ERR(status)) {
     item->release();
     LOG(FATAL) << "ucp_get_nbx failed with " << ucs_status_string(UCS_PTR_STATUS(status));
-    return req_id;
+    return;
   }
-  return req_id;
+  return;
 }
 
 

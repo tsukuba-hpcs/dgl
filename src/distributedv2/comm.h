@@ -19,7 +19,7 @@ namespace distributedv2 {
 
 typedef void (*comm_am_cb_t)(void *arg, const void *buffer, size_t length);
 
-typedef void (*comm_rma_cb_t)(void *arg, uint64_t id);
+typedef void (*comm_rma_cb_t)(void *arg, uint64_t req_id, void *address);
 
 #define MAX_IOV_CNT 16
 
@@ -69,6 +69,7 @@ struct rma_pool_item_t {
   bool used;
   rma_handler_t *handler;
   uint64_t req_id;
+  void *address;
   rma_pool_item_t(rma_handler_t *handler);
   void release();
 };
@@ -78,7 +79,7 @@ class RmaPool {
   size_t cursor;
 public:
   RmaPool(size_t length);
-  int alloc(rma_pool_item_t** item, size_t req_id, rma_handler_t *handler);
+  int alloc(rma_pool_item_t** item, size_t req_id, void *address, rma_handler_t *handler);
 };
 
 class Communicator {
@@ -102,7 +103,6 @@ class Communicator {
   static void send_cb(void *request, ucs_status_t status, void *user_data);
   void am_send(int rank, unsigned id, iov_pool_item_t *chunk);
   // for Remote Memory Access
-  uint64_t rma_req_id;
   RmaPool rma_pool;
   std::vector<rma_handler_t> mem_handlers;
   static void read_cb(void *request, ucs_status_t status, void *user_data);
@@ -120,7 +120,7 @@ public:
   std::pair<void*, size_t> get_rkey_buf(unsigned id);
   void create_rkey(unsigned id, const void *buffer, size_t length);
   void set_buffer_addr(unsigned id, const intptr_t buffer, size_t length);
-  uint64_t rma_read(int rank, unsigned id, void *buffer, uint64_t offset, size_t length);
+  void rma_read(int rank, unsigned id, uint64_t req_id, void *buffer, uint64_t offset, size_t length);
   // for Progress
   void progress();
 };
