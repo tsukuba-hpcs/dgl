@@ -13,6 +13,7 @@ class Context(ObjectBase):
     def __init__(self, comm = MPI.COMM_WORLD):
         self.rank = comm.Get_rank()
         self.size = comm.Get_size()
+        self.comm = comm
         self.__init_handle_by_constructor__(
             _CAPI_DistV2CreateContext,
             self.rank,
