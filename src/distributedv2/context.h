@@ -19,12 +19,13 @@ namespace dgl {
 namespace distributedv2 {
 
 struct Context: public runtime::Object {
+  int rank, size;
   Communicator comm;
-  ServiceManager manager;
   static constexpr const char* _type_key = "distributedv2.Context";
   Context(int rank, int size)
-  : comm(rank, size)
-  , manager(rank, size, &comm) {};
+  : rank(rank)
+  , size(size)
+  , comm(rank, size) {};
   DGL_DECLARE_OBJECT_TYPE_INFO(Context, runtime::Object);
 };
 

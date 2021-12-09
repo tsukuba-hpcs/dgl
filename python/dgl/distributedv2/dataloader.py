@@ -2,10 +2,15 @@ import numpy as np
 import dgl
 from array import array
 from mpi4py import MPI
+from .context import Context
+from .._ffi.object import register_object, ObjectBase
+from .._ffi.function import _init_api
 
 __all__ = [
     'RangePolicy',
-    'create_distgraph'
+    'create_distgraph',
+    'DistributedSampler',
+    'NodeDataLoader'
 ]
 
 class RangePolicy:
@@ -103,3 +108,50 @@ def create_distgraph(policy, edge):
         ('@local/_V', '_E', '@local/_V'): (local_edge[:,0], local_edge[:,1]),
         ('@remote/_V', '_E', '@local/_V'): (bridge_edge[:,0], bridge_edge[:,1]),
     })
+
+
+class DistributedSampler:
+    def __init__(self, context: Context, dataset, batch_size = 1000, seed = 777):
+        self.rank = context.rank
+        self.size = context.size
+        self.context = context
+        self.dataset = dataset
+        self.epoch = 0
+        self.seed = seed
+        self.num_samples = len(self.dataset) // self.size
+        self.total_size = self.num_samples * self.size
+    def __iter__(self):
+        g = np.random.default_rng(self.seed + self.epoch)
+        indices = g.permutation(len(self.dataset)).tolist()
+        indices = indices[:self.total_size]
+        indices = indices[self.rank:self.total_size:self.size]
+        self.epoch += 1
+        return iter(indices)
+    def __len__(self) -> int:
+        return self.num_samples
+
+@register_object('distributedv2.NodeDataLoader')
+class NodeDataLoader(ObjectBase):
+    def __init__(self, sampler: DistributedSampler, num_layers, edges, feats, labels, fanouts = None, batch_size = 1000):
+        self.sampler = sampler
+        self.num_layers = num_layers
+        self.edges = edges
+        self.feats = feats
+        self.labels = labels
+        self.num_nodes = self.feats.shape[0]
+        print("num_nodes={}".format(self.num_nodes))
+        if fanouts is not None:
+            assert len(fanouts) == self.num_layers
+            self.fanouts = fanouts
+        else:
+            self.fanouts = [30] * self.num_layers
+        self.batch_size = batch_size
+        self.__init_handle_by_constructor__(
+            _CAPI_DistV2CreateNodeDataLoader,
+            self.sampler.context,
+            self.num_layers,
+            self.num_nodes
+        )
+
+
+_init_api("dgl.distributedv2", __name__)

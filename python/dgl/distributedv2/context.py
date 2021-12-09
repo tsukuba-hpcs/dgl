@@ -11,12 +11,12 @@ __all__ = [
 @register_object('distributedv2.Context')
 class Context(ObjectBase):
     def __init__(self, comm = MPI.COMM_WORLD):
-        rank = comm.Get_rank()
-        size = comm.Get_size()
+        self.rank = comm.Get_rank()
+        self.size = comm.Get_size()
         self.__init_handle_by_constructor__(
             _CAPI_DistV2CreateContext,
-            rank,
-            size
+            self.rank,
+            self.size
         )
         addrs = self.__gather_workeraddr(comm)
         print(addrs)
