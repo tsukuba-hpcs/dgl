@@ -30,7 +30,7 @@ void ServiceManager::add_am_service(std::unique_ptr<AMService> &&serv) {
 
 void ServiceManager::rma_recv_cb(void *arg, uint64_t req_id, void *address) {
   sm_cb_arg_t *cbarg = (sm_cb_arg_t *)arg;
-  ((RMAService *)cbarg->serv)->rma_read_cb(cbarg->comm);
+  ((RMAService *)cbarg->serv)->rma_read_cb(cbarg->comm, req_id, address);
 }
 
 void ServiceManager::add_rma_service(std::unique_ptr<RMAService> &&serv,

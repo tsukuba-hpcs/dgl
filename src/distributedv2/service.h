@@ -35,7 +35,7 @@ public:
 class RMAService: public Service {
 public:
   unsigned rma_id;
-  virtual void rma_read_cb(Communicator *comm) = 0;
+  virtual void rma_read_cb(Communicator *comm, uint64_t req_id, void *buffer) = 0;
 };
 
 struct sm_cb_arg_t {
