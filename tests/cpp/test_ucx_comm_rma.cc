@@ -7,11 +7,11 @@
 
 using namespace dgl::distributedv2;
 
-class CommMemTest : public ::testing::Test {
+class CommRMATest : public ::testing::Test {
 protected:
   std::vector<char> buf0, buf1, recv_buf;
   Communicator comm0, comm1;
-  CommMemTest() : comm0(0, 2, 100), comm1(1, 2, 100) {
+  CommRMATest() : comm0(0, 2, 100), comm1(1, 2, 100) {
     auto p0 = comm0.get_workeraddr();
     auto p1 = comm1.get_workeraddr();
     std::string addrs(p0.second + p1.second, (char)0);
@@ -23,11 +23,11 @@ protected:
 };
 
 
-static void recv_cb(void *arg, uint64_t id) {
+static void recv_cb(void *arg, uint64_t req_id, void *address) {
   *((bool *)arg) = true;
 }
 
-TEST_F(CommMemTest, HELLO) {
+TEST_F(CommRMATest, HELLO) {
   buf0.resize(sizeof("HELLO"));
   std::strcpy(buf0.data(), "HELLO");
   buf1.resize(sizeof("WORLD"));
@@ -53,13 +53,7 @@ TEST_F(CommMemTest, HELLO) {
   comm0.set_buffer_addr(id, (intptr_t)&address[0], address.size());
   comm1.set_buffer_addr(id, (intptr_t)&address[0], address.size());
 
-  uint64_t req_id;
-
-  req_id = comm0.rma_read(1, id, &recv_buf[0], 0, recv_buf.size());
-  CHECK(req_id == 0 || req_id == 1);
-  if (req_id == 0) {
-    return;
-  }
+  comm0.rma_read(1, id, 0, &recv_buf[0], 0, recv_buf.size());
   while (!finished) {
     comm0.progress();
     comm1.progress();

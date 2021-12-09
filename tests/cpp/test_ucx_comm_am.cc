@@ -6,10 +6,10 @@
 
 using namespace dgl::distributedv2;
 
-class CommTest : public ::testing::Test {
+class CommAMTest : public ::testing::Test {
 protected:
   Communicator comm0, comm1;
-  CommTest() : comm0(0, 2, 100), comm1(1, 2, 100) {
+  CommAMTest() : comm0(0, 2, 100), comm1(1, 2, 100) {
     auto p0 = comm0.get_workeraddr();
     auto p1 = comm1.get_workeraddr();
     std::string addrs(p0.second + p1.second, (char)0);
@@ -34,7 +34,7 @@ static void recv_cb(void *arg, const void *buffer, size_t length) {
   std::memcpy(ctx->buf, buffer, length);
 }
 
-TEST_F(CommTest, PING) {
+TEST_F(CommAMTest, PING) {
   comm_test_ctx ctx {
     .len = 0,
     .buf = NULL,
@@ -57,7 +57,7 @@ TEST_F(CommTest, PING) {
   ASSERT_STREQ((char*)ctx.buf, "Hello, world");
 }
 
-TEST_F(CommTest, PING_MULTI) {
+TEST_F(CommAMTest, PING_MULTI) {
   comm_test_ctx ctx {
     .len = 0,
     .buf = NULL,
@@ -80,7 +80,7 @@ TEST_F(CommTest, PING_MULTI) {
   ASSERT_STREQ((char*)ctx.buf, "Hello, world");
 }
 
-TEST_F(CommTest, REUSE_POOL) {
+TEST_F(CommAMTest, REUSE_POOL) {
   comm_test_ctx ctx {
     .len = 0,
     .buf = NULL,
@@ -104,7 +104,7 @@ TEST_F(CommTest, REUSE_POOL) {
   ASSERT_STREQ((char*)ctx.buf, "Hello, world");
 }
 
-TEST_F(CommTest, REUSE_POOL_2) {
+TEST_F(CommAMTest, REUSE_POOL_2) {
   comm_test_ctx ctx {
     .len = 0,
     .buf = NULL,
