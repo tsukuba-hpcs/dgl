@@ -1,7 +1,6 @@
 #include "service.h"
 #include "context.h"
 
-#include <sstream>
 #include <memory>
 
 namespace dgl {
