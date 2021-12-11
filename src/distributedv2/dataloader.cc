@@ -31,8 +31,13 @@ DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2CreateNodeDataLoader")
   *rv = loader;
 });
 
-
-
+DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2EnqueueToNodeDataLoader")
+.set_body([] (DGLArgs args, DGLRetValue* rv) {
+  NodeDataLoaderRef loader = args[0];
+  List<Value> seeds = args[1];
+  int batch_size = args[2];
+  LOG(INFO) << "seeds.size() = " << seeds.size();
+});
 
 }
 }

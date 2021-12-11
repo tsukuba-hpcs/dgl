@@ -7,31 +7,8 @@ from .._ffi.object import register_object, ObjectBase
 from .._ffi.function import _init_api
 
 __all__ = [
-    'DistributedSampler',
     'NodeDataLoader'
 ]
-
-
-class DistributedSampler:
-    def __init__(self, context: Context, dataset, batch_size = 1000, seed = 777):
-        self.rank = context.rank
-        self.size = context.size
-        self.comm = context.comm
-        self.context = context
-        self.dataset = dataset
-        self.epoch = 0
-        self.seed = seed
-        self.num_samples = len(self.dataset) // self.size
-        self.total_size = self.num_samples * self.size
-    def __iter__(self):
-        g = np.random.default_rng(self.seed + self.epoch)
-        indices = g.permutation(len(self.dataset)).tolist()
-        indices = indices[:self.total_size]
-        indices = indices[self.rank:self.total_size:self.size]
-        self.epoch += 1
-        return iter(indices)
-    def __len__(self) -> int:
-        return self.num_samples
 
 @register_object('distributedv2.NodeDataLoader')
 class NodeDataLoader(ObjectBase):
@@ -99,11 +76,10 @@ class NodeDataLoader(ObjectBase):
 
         return dgl.graph((recv_edges[:, 0], recv_edges[:, 1]))
 
-    def __init__(self, sampler: DistributedSampler, num_layers, edges, feats, labels, fanouts = None, batch_size = 1000):
-        self.sampler = sampler
-        self.rank = self.sampler.rank
-        self.size = self.sampler.size
-        self.comm = self.sampler.comm
+    def __init__(self, context: Context, dataset, num_layers, edges, feats, labels, fanouts = None, batch_size = 1000, prefetch = 2, seed = 777):
+        self.rank = context.rank
+        self.size = context.size
+        self.comm = context.comm
         self.num_layers = num_layers
         self.feats = feats
         self.labels = labels
@@ -118,12 +94,30 @@ class NodeDataLoader(ObjectBase):
         self.batch_size = batch_size
         self.subgraph = self.__create_distgraph(edges)
         print("self.subgraph.num_nodes()={}".format(self.subgraph.num_nodes()))
+        self.epoch = 0
+        self.seed = seed
+        self.dataset = dataset
+        self.num_samples = len(self.dataset) // self.size
+        self.total_size = self.num_samples * self.size
         self.__init_handle_by_constructor__(
             _CAPI_DistV2CreateNodeDataLoader,
-            self.sampler.context,
+            context,
             self.num_layers,
             self.num_nodes
         )
+        for _ in range(prefetch):
+            self.__enqueue()
 
+    def __enqueue(self):
+        g = np.random.default_rng(self.seed + self.epoch)
+        indices = g.permutation(len(self.dataset)).tolist()
+        indices = indices[:self.total_size]
+        indices = indices[self.rank:self.total_size:self.size]
+        _CAPI_DistV2EnqueueToNodeDataLoader(
+            self,
+            indices,
+            self.batch_size
+        )
+        self.epoch += 1
 
 _init_api("dgl.distributedv2", __name__)
