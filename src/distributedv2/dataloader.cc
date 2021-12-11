@@ -34,9 +34,14 @@ DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2CreateNodeDataLoader")
 DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2EnqueueToNodeDataLoader")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
   NodeDataLoaderRef loader = args[0];
-  List<Value> seeds = args[1];
-  int batch_size = args[2];
-  LOG(INFO) << "seeds.size() = " << seeds.size();
+  List<Value> _seeds = args[1];
+  std::vector<int> seeds(ListValueToVector<int>(_seeds));
+});
+
+DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2DequeueToNodeDataLoader")
+.set_body([] (DGLArgs args, DGLRetValue* rv) {
+  NodeDataLoaderRef loader = args[0];
+  *rv = 0;
 });
 
 }

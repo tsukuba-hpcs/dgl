@@ -76,13 +76,16 @@ class NodeDataLoader(ObjectBase):
 
         return dgl.graph((recv_edges[:, 0], recv_edges[:, 1]))
 
-    def __init__(self, context: Context, dataset, num_layers, edges, feats, labels, fanouts = None, batch_size = 1000, prefetch = 2, seed = 777):
+    def __init__(self, context: Context, dataset, num_layers, edges, feats, labels, max_epoch, fanouts = None, batch_size = 1000, prefetch = 2, seed = 777):
         self.rank = context.rank
         self.size = context.size
         self.comm = context.comm
         self.num_layers = num_layers
         self.feats = feats
         self.labels = labels
+        self.max_epoch = max_epoch
+        self.prefetch = prefetch
+        assert self.prefetch <= self.max_epoch
         self.num_nodes = self.feats.shape[0]
         print("num_nodes={}".format(self.num_nodes))
         self.node_slit = (self.num_nodes + self.size - 1) // self.size
@@ -105,19 +108,34 @@ class NodeDataLoader(ObjectBase):
             self.num_layers,
             self.num_nodes
         )
-        for _ in range(prefetch):
+        for _ in range(self.prefetch):
             self.__enqueue()
 
     def __enqueue(self):
+        assert self.epoch < self.max_epoch
         g = np.random.default_rng(self.seed + self.epoch)
         indices = g.permutation(len(self.dataset)).tolist()
         indices = indices[:self.total_size]
         indices = indices[self.rank:self.total_size:self.size]
-        _CAPI_DistV2EnqueueToNodeDataLoader(
-            self,
-            indices,
-            self.batch_size
-        )
+        length = len(indices)
+        for l in range(0, length, self.batch_size):
+            r = min(length, l + self.batch_size)
+            _CAPI_DistV2EnqueueToNodeDataLoader(self, indices[l:r])
+        self.num_batches = (length + self.batch_size - 1) // self.batch_size
         self.epoch += 1
+
+    def __iter__(self):
+        self.iter = 0
+        if self.epoch + self.prefetch < self.max_epoch:
+            self.__enqueue()
+        return self
+
+    def __next__(self):
+        if self.iter < self.num_batches:
+            self.iter += 1
+            ret = _CAPI_DistV2DequeueToNodeDataLoader(self)
+            return ret
+        else:
+            raise StopIteration
 
 _init_api("dgl.distributedv2", __name__)
