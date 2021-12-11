@@ -114,13 +114,13 @@ public:
   void create_endpoints(std::string addrs);
   // for Active Message
   unsigned add_am_handler(void *arg, comm_am_cb_t cb);
-  void am_post(int rank, unsigned id, std::unique_ptr<uint8_t[]> &&data, size_t length);
+  void am_post(int rank, unsigned am_id, std::unique_ptr<uint8_t[]> &&data, size_t length);
   // for Remote Memory Access
   unsigned add_rma_handler(void *buffer, size_t length, void *arg, comm_rma_cb_t cb);
   std::pair<void*, size_t> get_rkey_buf(unsigned id);
-  void create_rkey(unsigned id, const void *buffer, size_t length);
-  void set_buffer_addr(unsigned id, const intptr_t buffer, size_t length);
-  void rma_read(int rank, unsigned id, uint64_t req_id, void *buffer, uint64_t offset, size_t length);
+  void create_rkey(unsigned rma_id, const void *buffer, size_t length);
+  void set_buffer_addr(unsigned rma_id, const intptr_t buffer, size_t length);
+  void rma_read(int rank, unsigned rma_id, uint64_t req_id, void *buffer, uint64_t offset, size_t length);
   // for Progress
   void progress();
 };
