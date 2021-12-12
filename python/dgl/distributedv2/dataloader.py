@@ -5,6 +5,8 @@ from mpi4py import MPI
 from .context import Context
 from .._ffi.object import register_object, ObjectBase
 from .._ffi.function import _init_api
+from .. import backend as F
+from .. import ndarray as nd
 
 __all__ = [
     'NodeDataLoader'
@@ -117,10 +119,12 @@ class NodeDataLoader(ObjectBase):
         indices = g.permutation(len(self.dataset)).tolist()
         indices = indices[:self.total_size]
         indices = indices[self.rank:self.total_size:self.size]
+        labels = self.labels[indices]
         length = len(indices)
         for l in range(0, length, self.batch_size):
             r = min(length, l + self.batch_size)
-            _CAPI_DistV2EnqueueToNodeDataLoader(self, indices[l:r])
+            _CAPI_DistV2EnqueueToNodeDataLoader(self, indices[l:r],
+                nd.from_dlpack(F.zerocopy_to_dlpack(F.zerocopy_from_numpy(labels[l:r]))))
         self.num_batches = (length + self.batch_size - 1) // self.batch_size
         self.epoch += 1
 

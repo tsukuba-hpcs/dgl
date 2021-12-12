@@ -36,6 +36,7 @@ DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2EnqueueToNodeDataLoader")
   NodeDataLoaderRef loader = args[0];
   List<Value> _seeds = args[1];
   std::vector<dgl_id_t> seeds(ListValueToVector<dgl_id_t>(_seeds));
+  NDArray labels = args[2];
 });
 
 DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2DequeueToNodeDataLoader")

@@ -40,7 +40,7 @@ def csv_node_pred(base_path: str, meta_info: dict):
     node_feat = np.genfromtxt(path.join(base_path, 'raw/node-feat.csv'), delimiter=',', dtype=np.float32)
     assert node_feat.shape[0] == num_node, "node feat shape[0] must be {}".format(num_node)
 
-    node_label = np.genfromtxt(path.join(base_path, 'raw/node-label.csv'), delimiter=',', dtype=np.uint16)
+    node_label = np.genfromtxt(path.join(base_path, 'raw/node-label.csv'), delimiter=',', dtype=np.int16)
     assert node_label.shape == num_node, "node label shape must be {}".format(num_node)
 
     train_nid = np.genfromtxt(path.join(base_path, 'split/{}/train.csv'.format(meta_info['split'])), delimiter=',', dtype=np.int64)
