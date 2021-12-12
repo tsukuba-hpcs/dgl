@@ -77,12 +77,23 @@ TEST_F(ServTest, TEST1) {
   ASSERT_EQ(blocks[0].edges[0].dst, 0);
   ASSERT_EQ(blocks[0].edges[1].src, 5);
   ASSERT_EQ(blocks[0].edges[1].dst, 0);
+  ASSERT_EQ(blocks[0].src_nodes.size(), 3);
+  ASSERT_EQ(blocks[0].src_nodes[0], 0);
+  ASSERT_EQ(blocks[0].src_nodes[1], 4);
+  ASSERT_EQ(blocks[0].src_nodes[2], 5);
   ASSERT_EQ(blocks[1].edges[0].src, 1);
   ASSERT_EQ(blocks[1].edges[0].dst, 5);
   ASSERT_EQ(blocks[1].edges[1].src, 2);
   ASSERT_EQ(blocks[1].edges[1].dst, 4);
   ASSERT_EQ(blocks[1].edges[2].src, 3);
   ASSERT_EQ(blocks[1].edges[2].dst, 4);
+  ASSERT_EQ(blocks[1].src_nodes.size(), 6);
+  ASSERT_EQ(blocks[1].src_nodes[0], 0);
+  ASSERT_EQ(blocks[1].src_nodes[1], 1);
+  ASSERT_EQ(blocks[1].src_nodes[2], 2);
+  ASSERT_EQ(blocks[1].src_nodes[3], 3);
+  ASSERT_EQ(blocks[1].src_nodes[4], 4);
+  ASSERT_EQ(blocks[1].src_nodes[5], 5);
 }
 
 TEST_F(ServTest, KARATE_CLUB_1) {
