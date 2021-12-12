@@ -41,6 +41,13 @@ void ServiceManager::add_rma_service(std::unique_ptr<RMAService> &&serv,
   comm->add_rma_handler(buffer, length, &args.back(), rma_recv_cb);
 }
 
+void ServiceManager::add_stub_service(std::unique_ptr<StubService> &&serv) {
+  serv->stub_id = servs.size();
+  servs.push_back(std::move(serv));
+  sm_cb_arg_t arg(servs.back().get(), comm);
+  args.push_back(std::move(arg));
+}
+
 void ServiceManager::progress() {
   for (auto &serv: servs) {
     serv->progress(comm);

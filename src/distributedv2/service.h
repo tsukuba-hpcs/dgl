@@ -26,6 +26,15 @@ public:
   virtual void progress(Communicator *comm) = 0;
 };
 
+class StubService: public Service {
+public:
+  unsigned stub_id;
+  virtual void progress() = 0;
+  void progress(Communicator *comm) {
+    progress();
+  }
+};
+
 class AMService: public Service {
 public:
   unsigned am_id;
@@ -55,6 +64,7 @@ class ServiceManager {
   static void rma_recv_cb(void *arg, uint64_t req_id, void *address);
 public:
   ServiceManager(int rank, int size, Communicator *comm);
+  void add_stub_service(std::unique_ptr<StubService> &&serv);
   void add_am_service(std::unique_ptr<AMService> &&serv);
   void add_rma_service(std::unique_ptr<RMAService> &&serv, void *buffer, size_t length);
   void progress();
