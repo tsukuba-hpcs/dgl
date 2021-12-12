@@ -191,7 +191,7 @@ void inline NeighborSampler::recv_query(Communicator *comm, uint16_t depth, uint
 
 void inline NeighborSampler::enqueue(uint64_t req_id) {
   LOG(INFO) << "req_id=" << req_id << " is finished";
-  std::vector<uint64_t> dst_nodes(prog_que[req_id].inputs.seeds);
+  std::vector<uint64_t> src_nodes(prog_que[req_id].inputs.seeds);
   for (uint16_t dep = 0; dep < num_layers; dep++) {
     auto target_block = &prog_que[req_id].blocks[dep];
     std::sort(target_block->edges.begin(), target_block->edges.end());
@@ -199,14 +199,14 @@ void inline NeighborSampler::enqueue(uint64_t req_id) {
       std::unique(target_block->edges.begin(), target_block->edges.end())
     , target_block->edges.end());
     for (edge_elem_t edge: target_block->edges) {
-      dst_nodes.push_back(edge.dst);
+      src_nodes.push_back(edge.src);
     }
-    std::sort(dst_nodes.begin(),dst_nodes.end());
-    dst_nodes.erase(
-      std::unique(dst_nodes.begin(),dst_nodes.end())
-    , dst_nodes.end()
+    std::sort(src_nodes.begin(), src_nodes.end());
+    src_nodes.erase(
+      std::unique(src_nodes.begin(), src_nodes.end())
+    , src_nodes.end()
     );
-    target_block->dst_nodes = dst_nodes;
+    target_block->src_nodes = src_nodes;
   }
   output_que->push(seed_with_blocks_t(std::move(prog_que[req_id])));
   prog_que.erase(req_id);

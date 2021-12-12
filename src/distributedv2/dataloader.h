@@ -39,7 +39,7 @@ using edges_t = std::vector<edge_elem_t>;
 
 struct block_t {
   edges_t edges;
-  std::vector<dgl_id_t> dst_nodes;
+  std::vector<dgl_id_t> src_nodes;
 };
 
 // Neighbor Sampler
