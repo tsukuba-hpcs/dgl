@@ -329,6 +329,7 @@ void Communicator::read_cb(void *request, ucs_status_t status, void *user_data) 
   rma_pool_item_t *item = (rma_pool_item_t *)user_data;
   item->handler->cb(item->handler->arg, item->req_id, item->address);
   item->release();
+  ucp_request_free(request);
 }
 
 void Communicator::rma_read(int rank, unsigned rma_id, uint64_t req_id, void *buffer, uint64_t offset, size_t length) {
