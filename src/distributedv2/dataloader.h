@@ -59,10 +59,15 @@ struct seed_with_blocks_t {
   std::vector<dgl_id_t> seeds;
   NDArray labels;
   std::vector<block_t> blocks;
+  seed_with_blocks_t() {}
   seed_with_blocks_t(neighbor_sampler_prog_t &&prog)
   : seeds(std::move(prog.inputs.seeds))
   , labels(std::move(prog.inputs.labels))
   , blocks(std::move(prog.blocks)) {}
+  seed_with_blocks_t(std::vector<dgl_id_t> &&seeds, NDArray &&labels, std::vector<block_t> &&blocks)
+  : seeds(std::move(seeds))
+  , labels(std::move(labels))
+  , blocks(std::move(blocks)) {}
 };
 
 struct neighbor_sampler_arg_t {
@@ -103,6 +108,61 @@ public:
     std::queue<seed_with_label_t> *input,
     std::queue<seed_with_blocks_t> *output);
   void am_recv(Communicator *comm, const void *buffer, size_t length);
+  void progress(Communicator *comm);
+};
+
+struct feat_loader_prog_t {
+  seed_with_blocks_t inputs;
+  NDArray feats;
+  uint64_t received;
+  uint64_t num_input_nodes;
+  feat_loader_prog_t(): received(0) {}
+  feat_loader_prog_t(seed_with_blocks_t &&_inputs)
+  : inputs(std::move(_inputs))
+  , received(0) {
+    CHECK(inputs.blocks.size() > 0);
+    num_input_nodes = inputs.blocks.back().src_nodes.size();
+  }
+};
+
+struct seed_with_feat_t {
+  std::vector<dgl_id_t> seeds;
+  NDArray labels;
+  std::vector<block_t> blocks;
+  NDArray feats;
+  seed_with_feat_t(feat_loader_prog_t &&prog)
+  : seeds(std::move(prog.inputs.seeds))
+  , labels(std::move(prog.inputs.labels))
+  , blocks(std::move(prog.inputs.blocks))
+  , feats(std::move(prog.feats)) {
+  }
+  seed_with_feat_t() {}
+};
+
+struct feat_loader_arg_t {
+  int rank;
+  int size;
+  uint64_t num_nodes;
+  NDArray local_feats;
+};
+
+class FeatLoader: public RMAService {
+  NDArray local_feats;
+  uint64_t feats_row;
+  uint64_t feats_row_size;
+  int rank, size;
+  uint64_t node_slit;
+  uint64_t req_id;
+  std::queue<seed_with_blocks_t>  *input_que;
+  ConcurrentQueue<seed_with_feat_t> *output_que;
+  std::unordered_map<uint64_t, feat_loader_prog_t> prog_que;
+public:
+  FeatLoader(feat_loader_arg_t &&arg,
+    std::queue<seed_with_blocks_t>  *input_que,
+    ConcurrentQueue<seed_with_feat_t> *output_que
+  );
+  std::pair<void *, size_t> served_buffer();
+  void rma_read_cb(Communicator *comm, uint64_t req_id, void *buffer);
   void progress(Communicator *comm);
 };
 

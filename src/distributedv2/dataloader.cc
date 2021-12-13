@@ -256,6 +256,83 @@ void NeighborSampler::progress(Communicator *comm) {
   }
 }
 
+FeatLoader::FeatLoader(feat_loader_arg_t &&arg,
+  std::queue<seed_with_blocks_t>  *input_que,
+  ConcurrentQueue<seed_with_feat_t> *output_que)
+: rank(arg.rank)
+, size(arg.size)
+, node_slit((arg.num_nodes + arg.size - 1) / arg.size)
+, req_id(arg.rank)
+, local_feats(std::move(arg.local_feats))
+, input_que(input_que)
+, output_que(output_que) {
+  int64_t row = 1;
+  for (int dim = 1; dim < local_feats->ndim; dim++) {
+    row *= local_feats->shape[dim];
+  }
+  feats_row = row;
+  feats_row_size = feats_row * local_feats->dtype.bits / 8;
+}
+
+std::pair<void *, size_t> FeatLoader::served_buffer() {
+  int64_t length = local_feats->dtype.bits / 8;
+  for (int dim = 0; dim < local_feats->ndim; dim++) {
+    length *= local_feats->shape[dim];
+  }
+  return std::make_pair(local_feats->data, length);
+}
+
+void FeatLoader::progress(Communicator *comm) {
+  while (!input_que->empty()) {
+    LOG(INFO) << "progress: req_id=" << req_id << "input_que->size()= " << input_que->size();
+    CHECK(input_que->front().blocks.size() > 0);
+    seed_with_blocks_t item = std::move(input_que->front());
+    CHECK(item.blocks.size() > 0);
+    prog_que[req_id] = feat_loader_prog_t(std::move(item));
+    LOG(INFO) << "progress2: req_id=" << req_id << "input_que->size()= " << input_que->size();
+    input_que->pop();
+    LOG(INFO) << "progress3: req_id=" << req_id << "input_que->size()= " << input_que->size();
+    std::vector<dgl_id_t> &input_nodes = prog_que[req_id].inputs.blocks.back().src_nodes;
+    std::vector<int64_t> shape{
+      static_cast<int64_t>(input_nodes.size()),
+      static_cast<int64_t>(feats_row)
+    };
+    prog_que[req_id].feats = NDArray::Empty(shape, local_feats->dtype, DLContext{kDLCPU, 0});
+    LOG(INFO) << "progress4: req_id=" << req_id << "input_que->size()= " << input_que->size();
+
+    for (size_t row = 0; row < shape[0]; row++) {
+      dgl_id_t node = input_nodes[row];
+      int src_rank = node / node_slit;
+      LOG(INFO) << "progress node=" << node << " src_rank=" << src_rank;
+      uint64_t offset = (node % node_slit) * feats_row_size;
+      LOG(INFO) << "offset= " << offset;
+      void *recv_buffer = PTR_BYTE_OFFSET(prog_que[req_id].feats->data, feats_row_size * row);
+      if (src_rank == rank) {
+        std::memcpy(recv_buffer, PTR_BYTE_OFFSET(served_buffer().first, offset), feats_row_size);
+        prog_que[req_id].received++;
+        if (prog_que[req_id].received == prog_que[req_id].num_input_nodes) {
+          LOG(INFO) << "req_id=" << req_id << " is completed";
+          output_que->enqueue(seed_with_feat_t(std::move(prog_que[req_id])));
+          prog_que.erase(req_id);
+        }
+        continue;
+      }
+      comm->rma_read(src_rank, rma_id, req_id, recv_buffer, offset, feats_row_size);
+    }
+    req_id += size;
+  }
+}
+
+void FeatLoader::rma_read_cb(Communicator *comm, uint64_t req_id, void *buffer) {
+  prog_que[req_id].received++;
+  if (prog_que[req_id].received == prog_que[req_id].num_input_nodes) {
+    LOG(INFO) << "rma_read_cb: req_id=" << req_id << " is completed";
+    output_que->enqueue(seed_with_feat_t(std::move(prog_que[req_id])));
+    prog_que.erase(req_id);
+  }
+}
+
+
 NodeDataLoader::NodeDataLoader(int rank, int size, Communicator *comm, node_dataloader_arg_t &&arg)
 : ServiceManager(rank, size, comm) {
   
