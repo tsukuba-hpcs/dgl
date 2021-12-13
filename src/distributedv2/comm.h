@@ -61,7 +61,7 @@ struct rma_handler_t {
   size_t rkey_buf_len;
   std::vector<ucp_rkey_h> rkey;
   std::vector<uint64_t> address;
-  rma_handler_t(void *arg, comm_rma_cb_t cb,ucp_mem_h mem, void *rkey_buf, size_t rkey_buf_len)
+  rma_handler_t(void *arg, comm_rma_cb_t cb, ucp_mem_h mem, void *rkey_buf, size_t rkey_buf_len)
   : arg(arg), cb(cb), mem(mem), rkey_buf(rkey_buf), rkey_buf_len(rkey_buf_len) {}
 };
 
