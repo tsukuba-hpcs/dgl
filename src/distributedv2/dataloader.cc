@@ -284,28 +284,22 @@ std::pair<void *, size_t> FeatLoader::served_buffer() {
 
 void FeatLoader::progress(Communicator *comm) {
   while (!input_que->empty()) {
-    LOG(INFO) << "progress: req_id=" << req_id << "input_que->size()= " << input_que->size();
     CHECK(input_que->front().blocks.size() > 0);
     seed_with_blocks_t item = std::move(input_que->front());
     CHECK(item.blocks.size() > 0);
     prog_que[req_id] = feat_loader_prog_t(std::move(item));
-    LOG(INFO) << "progress2: req_id=" << req_id << "input_que->size()= " << input_que->size();
     input_que->pop();
-    LOG(INFO) << "progress3: req_id=" << req_id << "input_que->size()= " << input_que->size();
     std::vector<dgl_id_t> &input_nodes = prog_que[req_id].inputs.blocks.back().src_nodes;
     std::vector<int64_t> shape{
       static_cast<int64_t>(input_nodes.size()),
       static_cast<int64_t>(feats_row)
     };
     prog_que[req_id].feats = NDArray::Empty(shape, local_feats->dtype, DLContext{kDLCPU, 0});
-    LOG(INFO) << "progress4: req_id=" << req_id << "input_que->size()= " << input_que->size();
 
     for (size_t row = 0; row < shape[0]; row++) {
       dgl_id_t node = input_nodes[row];
       int src_rank = node / node_slit;
-      LOG(INFO) << "progress node=" << node << " src_rank=" << src_rank;
       uint64_t offset = (node % node_slit) * feats_row_size;
-      LOG(INFO) << "offset= " << offset;
       void *recv_buffer = PTR_BYTE_OFFSET(prog_que[req_id].feats->data, feats_row_size * row);
       if (src_rank == rank) {
         std::memcpy(recv_buffer, PTR_BYTE_OFFSET(served_buffer().first, offset), feats_row_size);
