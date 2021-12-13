@@ -75,7 +75,7 @@ struct neighbor_sampler_arg_t {
   int size;
   uint64_t num_nodes;
   uint16_t num_layers;
-  GraphRef g;
+  GraphRef local_graph;
   std::vector<int16_t> fanouts;
 };
 

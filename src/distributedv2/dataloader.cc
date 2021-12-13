@@ -21,7 +21,7 @@ NeighborSampler::NeighborSampler(neighbor_sampler_arg_t &&arg,
   : rank(arg.rank)
   , size(arg.size)
   , node_slit((arg.num_nodes + arg.size - 1) / arg.size)
-  , local_graph(arg.g)
+  , local_graph(arg.local_graph)
   , num_layers(arg.num_layers)
   , req_id(arg.rank)
   , input_que(input_que)
