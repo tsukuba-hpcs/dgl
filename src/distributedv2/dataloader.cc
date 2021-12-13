@@ -16,16 +16,16 @@ namespace distributedv2 {
 using namespace dgl::runtime;
 
 NeighborSampler::NeighborSampler(neighbor_sampler_arg_t &&arg,
-  std::queue<seed_with_label_t> *input,
-  std::queue<seed_with_blocks_t> *output)
+  ConcurrentQueue<seed_with_label_t> *input_que,
+  std::queue<seed_with_blocks_t> *output_que)
   : rank(arg.rank)
   , size(arg.size)
   , node_slit((arg.num_nodes + arg.size - 1) / arg.size)
   , local_graph(arg.g)
   , num_layers(arg.num_layers)
   , req_id(arg.rank)
-  , input_que(input)
-  , output_que(output)
+  , input_que(input_que)
+  , output_que(output_que)
   , prog_que({}) {
   fanouts.assign(num_layers, -1);
   if (arg.fanouts) {
@@ -248,9 +248,9 @@ void NeighborSampler::am_recv(Communicator *comm, const void *buffer, size_t len
 }
 
 void NeighborSampler::progress(Communicator *comm) {
-  while (!input_que->empty()) {
-    prog_que[req_id] = neighbor_sampler_prog_t(num_layers, std::move(input_que->front()));
-    input_que->pop();
+  seed_with_label_t input;
+  while (input_que->try_dequeue(input)) {
+    prog_que[req_id] = neighbor_sampler_prog_t(num_layers, std::move(input));
     scatter(comm, 0, req_id, std::vector<dgl_id_t>(prog_que[req_id].inputs.seeds), PPT_ALL);
     req_id += size;
   }

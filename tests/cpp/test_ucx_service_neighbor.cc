@@ -10,7 +10,7 @@ class ServTest : public ::testing::Test {
 protected:
   Communicator comm0, comm1;
   ServiceManager sm0,sm1;
-  std::queue<seed_with_label_t> input0, input1;
+  ConcurrentQueue<seed_with_label_t> input0, input1;
   std::queue<seed_with_blocks_t> output0, output1;
   ServTest()
   :
@@ -64,7 +64,7 @@ TEST_F(ServTest, TEST1) {
   seed_with_label_t item = {
     .seeds = seeds,
   };
-  input0.push(std::move(item));
+  input0.enqueue(std::move(item));
   while (output0.empty()) {
     sm0.progress();
     sm1.progress();
@@ -130,7 +130,7 @@ TEST_F(ServTest, KARATE_CLUB_1) {
   seed_with_label_t item = {
     .seeds = seeds,
   };
-  input0.push(std::move(item));
+  input0.enqueue(std::move(item));
   while (output0.empty()) {
     sm0.progress();
     sm1.progress();
@@ -208,7 +208,7 @@ TEST_F(ServTest, KARATE_CLUB_2) {
   seed_with_label_t item = {
     .seeds = seeds,
   };
-  input0.push(std::move(item));
+  input0.enqueue(std::move(item));
   while (output0.empty()) {
     sm0.progress();
     sm1.progress();
@@ -316,7 +316,7 @@ TEST_F(ServTest, KARATE_CLUB_3) {
   seed_with_label_t item = {
     .seeds = seeds,
   };
-  input0.push(std::move(item));
+  input0.enqueue(std::move(item));
   while (output0.empty()) {
     sm0.progress();
     sm1.progress();
@@ -398,7 +398,7 @@ TEST_F(ServTest, KARATE_CLUB_4) {
   seed_with_label_t item = {
     .seeds = seeds,
   };
-  input0.push(std::move(item));
+  input0.enqueue(std::move(item));
   while (output0.empty()) {
     sm0.progress();
     sm1.progress();
@@ -458,7 +458,7 @@ TEST_F(ServTest, KARATE_CLUB_5) {
   seed_with_label_t item = {
     .seeds = seeds,
   };
-  input0.push(std::move(item));
+  input0.enqueue(std::move(item));
   while (output0.empty()) {
     sm0.progress();
     sm1.progress();
@@ -510,7 +510,7 @@ TEST_F(ServTest, FANOUT_TEST1) {
   seed_with_label_t item = {
     .seeds = seeds,
   };
-  input0.push(std::move(item));
+  input0.enqueue(std::move(item));
   while (output0.empty()) {
     sm0.progress();
     sm1.progress();
@@ -561,7 +561,7 @@ TEST_F(ServTest, FANOUT_KARATE_CLUB_1) {
   seed_with_label_t item = {
     .seeds = seeds,
   };
-  input0.push(std::move(item));
+  input0.enqueue(std::move(item));
   while (output0.empty()) {
     sm0.progress();
     sm1.progress();
