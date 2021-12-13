@@ -41,7 +41,7 @@ TEST_F(ServTest, TEST1) {
       .num_nodes = 6,
       .num_layers = 2,
       .g = dgl::GraphRef(dgl::Graph::CreateFromCOO(6, edge0_src, edge0_dst)),
-      .fanouts = NULL,
+      .fanouts = std::vector<int16_t>{},
     };
     neighbor_sampler_arg_t arg1 = {
       .rank = 1,
@@ -49,7 +49,7 @@ TEST_F(ServTest, TEST1) {
       .num_nodes = 6,
       .num_layers = 2,
       .g = dgl::GraphRef(dgl::Graph::CreateFromCOO(6, edge1_src, edge1_dst)),
-      .fanouts = NULL,
+      .fanouts = std::vector<int16_t>{},
     };
     auto sampler0 =
       std::unique_ptr<NeighborSampler>(new NeighborSampler(std::move(arg0), &input0, &output0));
@@ -108,7 +108,7 @@ TEST_F(ServTest, KARATE_CLUB_1) {
       .num_nodes = 34,
       .num_layers = 1,
       .g = dgl::GraphRef(dgl::Graph::CreateFromCOO(34, edge0_src, edge0_dst)),
-      .fanouts = NULL,
+      .fanouts =  std::vector<int16_t>{},
     };
     neighbor_sampler_arg_t arg1 = {
       .rank = 1,
@@ -116,7 +116,7 @@ TEST_F(ServTest, KARATE_CLUB_1) {
       .num_nodes = 34,
       .num_layers = 1,
       .g = dgl::GraphRef(dgl::Graph::CreateFromCOO(34, edge1_src, edge1_dst)),
-      .fanouts = NULL,
+      .fanouts =  std::vector<int16_t>{},
     };
     auto sampler0 =
       std::unique_ptr<NeighborSampler>(new NeighborSampler(std::move(arg0), &input0, &output0));
@@ -186,7 +186,7 @@ TEST_F(ServTest, KARATE_CLUB_2) {
       .num_nodes = 34,
       .num_layers = 2,
       .g = dgl::GraphRef(dgl::Graph::CreateFromCOO(34, edge0_src, edge0_dst)),
-      .fanouts = NULL,
+      .fanouts =  std::vector<int16_t>{},
     };
     neighbor_sampler_arg_t arg1 = {
       .rank = 1,
@@ -194,7 +194,7 @@ TEST_F(ServTest, KARATE_CLUB_2) {
       .num_nodes = 34,
       .num_layers = 2,
       .g = dgl::GraphRef(dgl::Graph::CreateFromCOO(34, edge1_src, edge1_dst)),
-      .fanouts = NULL,
+      .fanouts =  std::vector<int16_t>{},
     };
     auto sampler0 =
       std::unique_ptr<NeighborSampler>(new NeighborSampler(std::move(arg0), &input0, &output0));
@@ -294,7 +294,7 @@ TEST_F(ServTest, KARATE_CLUB_3) {
       .num_nodes = 34,
       .num_layers = 3,
       .g = dgl::GraphRef(dgl::Graph::CreateFromCOO(34, edge0_src, edge0_dst)),
-      .fanouts = NULL,
+      .fanouts =  std::vector<int16_t>{},
     };
     neighbor_sampler_arg_t arg1 = {
       .rank = 1,
@@ -302,7 +302,7 @@ TEST_F(ServTest, KARATE_CLUB_3) {
       .num_nodes = 34,
       .num_layers = 3,
       .g = dgl::GraphRef(dgl::Graph::CreateFromCOO(34, edge1_src, edge1_dst)),
-      .fanouts = NULL,
+      .fanouts =  std::vector<int16_t>{},
     };
     auto sampler0 =
       std::unique_ptr<NeighborSampler>(new NeighborSampler(std::move(arg0), &input0, &output0));
@@ -376,7 +376,7 @@ TEST_F(ServTest, KARATE_CLUB_4) {
       .num_nodes = 34,
       .num_layers = 4,
       .g = dgl::GraphRef(dgl::Graph::CreateFromCOO(34, edge0_src, edge0_dst)),
-      .fanouts = NULL,
+      .fanouts =  std::vector<int16_t>{},
     };
     neighbor_sampler_arg_t arg1 = {
       .rank = 1,
@@ -384,7 +384,7 @@ TEST_F(ServTest, KARATE_CLUB_4) {
       .num_nodes = 34,
       .num_layers = 4,
       .g = dgl::GraphRef(dgl::Graph::CreateFromCOO(34, edge1_src, edge1_dst)),
-      .fanouts = NULL,
+      .fanouts =  std::vector<int16_t>{},
     };
     auto sampler0 =
       std::unique_ptr<NeighborSampler>(new NeighborSampler(std::move(arg0), &input0, &output0));
@@ -436,7 +436,7 @@ TEST_F(ServTest, KARATE_CLUB_5) {
       .num_nodes = 34,
       .num_layers = 5,
       .g = dgl::GraphRef(dgl::Graph::CreateFromCOO(34, edge0_src, edge0_dst)),
-      .fanouts = NULL,
+      .fanouts =  std::vector<int16_t>{},
     };
     neighbor_sampler_arg_t arg1 = {
       .rank = 1,
@@ -444,7 +444,7 @@ TEST_F(ServTest, KARATE_CLUB_5) {
       .num_nodes = 34,
       .num_layers = 5,
       .g = dgl::GraphRef(dgl::Graph::CreateFromCOO(34, edge1_src, edge1_dst)),
-      .fanouts = NULL,
+      .fanouts =  std::vector<int16_t>{},
     };
     auto sampler0 =
       std::unique_ptr<NeighborSampler>(new NeighborSampler(std::move(arg0), &input0, &output0));
@@ -487,7 +487,7 @@ TEST_F(ServTest, FANOUT_TEST1) {
       .num_nodes = 6,
       .num_layers = 2,
       .g = dgl::GraphRef(dgl::Graph::CreateFromCOO(6, edge0_src, edge0_dst)),
-      .fanouts = fanouts.data(),
+      .fanouts = fanouts,
     };
     neighbor_sampler_arg_t arg1 = {
       .rank = 1,
@@ -495,7 +495,7 @@ TEST_F(ServTest, FANOUT_TEST1) {
       .num_nodes = 6,
       .num_layers = 2,
       .g = dgl::GraphRef(dgl::Graph::CreateFromCOO(6, edge1_src, edge1_dst)),
-      .fanouts = fanouts.data(),
+      .fanouts = fanouts,
     };
     auto sampler0 =
       std::unique_ptr<NeighborSampler>(new NeighborSampler(std::move(arg0), &input0, &output0));
@@ -539,7 +539,7 @@ TEST_F(ServTest, FANOUT_KARATE_CLUB_1) {
       .num_nodes = 34,
       .num_layers = 1,
       .g = dgl::GraphRef(dgl::Graph::CreateFromCOO(34, edge0_src, edge0_dst)),
-      .fanouts = fanouts.data(),
+      .fanouts = fanouts,
     };
     neighbor_sampler_arg_t arg1 = {
       .rank = 1,
@@ -547,7 +547,7 @@ TEST_F(ServTest, FANOUT_KARATE_CLUB_1) {
       .num_nodes = 34,
       .num_layers = 1,
       .g = dgl::GraphRef(dgl::Graph::CreateFromCOO(34, edge1_src, edge1_dst)),
-      .fanouts = fanouts.data(),
+      .fanouts = fanouts,
     };
     auto sampler0 =
       std::unique_ptr<NeighborSampler>(new NeighborSampler(std::move(arg0), &input0, &output0));

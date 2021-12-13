@@ -28,8 +28,9 @@ NeighborSampler::NeighborSampler(neighbor_sampler_arg_t &&arg,
   , output_que(output_que)
   , prog_que({}) {
   fanouts.assign(num_layers, -1);
-  if (arg.fanouts) {
-    std::memcpy(fanouts.data(), arg.fanouts, num_layers * sizeof(int16_t));
+  if (!arg.fanouts.empty()) {
+    CHECK(arg.fanouts.size() == num_layers);
+    fanouts = arg.fanouts;
   }
 }
 
