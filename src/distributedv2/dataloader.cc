@@ -328,8 +328,8 @@ void FeatLoader::rma_read_cb(Communicator *comm, uint64_t req_id, void *buffer) 
 }
 
 
-NodeDataLoader::NodeDataLoader(int rank, int size, Communicator *comm, node_dataloader_arg_t &&arg)
-: ServiceManager(rank, size, comm) {
+NodeDataLoader::NodeDataLoader(Communicator *comm, node_dataloader_arg_t &&arg)
+: ServiceManager(arg.rank, arg.size, comm) {
   
 }
 
@@ -339,11 +339,20 @@ DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2CreateNodeDataLoader")
   ContextRef ctx = args[0];
   int num_layers = args[1];
   int num_nodes = args[2];
+  GraphRef local_graph = args[3];
+  List<Value> _fanouts = args[4];
+  std::vector<int> fanouts(ListValueToVector<int>(_fanouts));
+  NDArray local_feats = args[5];
   node_dataloader_arg_t arg = {
+    .rank = ctx->rank,
+    .size = ctx->size,
     .num_nodes = num_nodes,
     .num_layers = num_layers,
+    .local_graph = std::move(local_graph),
+    .fanouts = fanouts,
+    .local_feats = std::move(local_feats),
   };
-  std::shared_ptr<NodeDataLoader> loader(new NodeDataLoader(ctx->rank, ctx->size, &ctx->comm, std::move(arg)));
+  std::shared_ptr<NodeDataLoader> loader(new NodeDataLoader(&ctx->comm, std::move(arg)));
   *rv = loader;
 });
 

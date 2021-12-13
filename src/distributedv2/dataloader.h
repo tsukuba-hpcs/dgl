@@ -76,7 +76,7 @@ struct neighbor_sampler_arg_t {
   uint64_t num_nodes;
   uint16_t num_layers;
   GraphRef local_graph;
-  std::vector<int16_t> fanouts;
+  std::vector<int> fanouts;
 };
 
 /**
@@ -88,7 +88,7 @@ struct neighbor_sampler_arg_t {
 class NeighborSampler: public AMService {
   GraphRef local_graph;
   uint16_t num_layers;
-  std::vector<int16_t> fanouts;
+  std::vector<int> fanouts;
   int rank, size;
   uint64_t node_slit;
   uint64_t req_id;
@@ -167,16 +167,22 @@ public:
 };
 
 struct node_dataloader_arg_t {
+  int rank;
+  int size;
   uint64_t num_nodes;
   uint16_t num_layers;
+  GraphRef local_graph;
+  std::vector<int> fanouts;
+  NDArray local_feats;
 };
 
 class NodeDataLoader: public ServiceManager, public runtime::Object {
   ConcurrentQueue<seed_with_label_t> input;
-  ConcurrentQueue<std::vector<int>> output;
+  std::queue<seed_with_blocks_t> bridge;
+  ConcurrentQueue<seed_with_feat_t> output;
 public:
   static constexpr const char* _type_key = "distributedv2.NodeDataLoader";
-  NodeDataLoader(int rank, int size, Communicator *comm, node_dataloader_arg_t &&arg);
+  NodeDataLoader(Communicator *comm, node_dataloader_arg_t &&arg);
   DGL_DECLARE_OBJECT_TYPE_INFO(NodeDataLoader, runtime::Object);
 };
 
