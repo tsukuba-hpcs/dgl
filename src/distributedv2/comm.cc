@@ -344,7 +344,7 @@ void Communicator::rma_read(int rank, unsigned rma_id, uint64_t req_id, void *bu
     },
     .user_data = item,
   };
-  status = ucp_get_nbx(eps[rank], buffer, length, handler->address[rank], handler->rkey[rank], &params);
+  status = ucp_get_nbx(eps[rank], buffer, length, handler->address[rank] + offset, handler->rkey[rank], &params);
   if (status == NULL) {
     handler->cb(handler->arg, req_id, buffer);
     return;
