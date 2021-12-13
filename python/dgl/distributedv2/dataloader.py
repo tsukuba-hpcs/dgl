@@ -76,19 +76,23 @@ class NodeDataLoader(ObjectBase):
 
         temp_edges = None
 
-        return dgl.graph((recv_edges[:, 0], recv_edges[:, 1]))
+        return dgl.graph_index.from_edge_list((recv_edges[:, 0], recv_edges[:, 1]), True)
+
+    def __load_feats(self, rank, node_slit, feats):
+        l = self.node_slit * rank
+        r = min(self.node_slit * (rank + 1), feats.shape[0])
+        return feats[l:r]
 
     def __init__(self, context: Context, dataset, num_layers, edges, feats, labels, max_epoch, fanouts = None, batch_size = 1000, prefetch = 2, seed = 777):
         self.rank = context.rank
         self.size = context.size
         self.comm = context.comm
         self.num_layers = num_layers
-        self.feats = feats
         self.labels = labels
         self.max_epoch = max_epoch
         self.prefetch = prefetch
         assert self.prefetch <= self.max_epoch
-        self.num_nodes = self.feats.shape[0]
+        self.num_nodes = feats.shape[0]
         print("num_nodes={}".format(self.num_nodes))
         self.node_slit = (self.num_nodes + self.size - 1) // self.size
         if fanouts is not None:
@@ -97,8 +101,9 @@ class NodeDataLoader(ObjectBase):
         else:
             self.fanouts = [30] * self.num_layers
         self.batch_size = batch_size
-        self.subgraph = self.__create_distgraph(edges)
-        print("self.subgraph.num_nodes()={}".format(self.subgraph.num_nodes()))
+        self.local_feats = self.__load_feats(self.rank, self.node_slit, feats)
+        self.local_graph = self.__create_distgraph(edges)
+        print("self.local_graph.number_of_nodes()={}".format(self.local_graph.number_of_nodes()))
         self.epoch = 0
         self.seed = seed
         self.dataset = dataset
@@ -108,7 +113,10 @@ class NodeDataLoader(ObjectBase):
             _CAPI_DistV2CreateNodeDataLoader,
             context,
             self.num_layers,
-            self.num_nodes
+            self.num_nodes,
+            self.local_graph,
+            self.fanouts,
+            nd.from_dlpack(F.zerocopy_to_dlpack(F.zerocopy_from_numpy(self.local_feats)))
         )
         for _ in range(self.prefetch):
             self.__enqueue()
