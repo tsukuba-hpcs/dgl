@@ -57,20 +57,6 @@ void Communicator::create_endpoints(std::string addrs) {
 Communicator::~Communicator() {
   ucs_status_t status;
   ucs_status_ptr_t req;
-  for (int id = 0; id < mem_handlers.size(); id++) {
-    CHECK(mem_handlers[id].rkey_buf != NULL);
-    ucp_rkey_buffer_release(mem_handlers[id].rkey_buf);
-    for (int cur = 0; cur < size; cur++) {
-      if (cur == rank) continue;
-      CHECK(mem_handlers[id].rkey[cur] != NULL);
-      ucp_rkey_destroy(mem_handlers[id].rkey[cur]);
-    }
-    
-    status = ucp_mem_unmap(ucp_context, mem_handlers[id].mem);
-    if (status != UCS_OK) {
-      LOG(FATAL) << "ucp_mem_unmap failed with " << ucs_status_string(status); 
-    }
-  }
   ucp_request_param_t params = {
     .op_attr_mask = UCP_OP_ATTR_FIELD_FLAGS,
     .flags = UCP_EP_CLOSE_MODE_FLUSH,
@@ -389,6 +375,23 @@ void Communicator::create_rkey(unsigned rma_id, const void *buffer, size_t lengt
     if (status != UCS_OK) {
       LOG(FATAL) << "ucp_ep_rkey_unpack failed with "
       << ucs_status_string(status);
+    }
+  }
+}
+
+void Communicator::unmap() {
+  ucs_status_t status;
+  for (int id = 0; id < mem_handlers.size(); id++) {
+    CHECK(mem_handlers[id].rkey_buf != NULL);
+    ucp_rkey_buffer_release(mem_handlers[id].rkey_buf);
+    for (int cur = 0; cur < size; cur++) {
+      if (cur == rank) continue;
+      CHECK(mem_handlers[id].rkey[cur] != NULL);
+      ucp_rkey_destroy(mem_handlers[id].rkey[cur]);
+    }
+    status = ucp_mem_unmap(ucp_context, mem_handlers[id].mem);
+    if (status != UCS_OK) {
+      LOG(FATAL) << "ucp_mem_unmap failed with " << ucs_status_string(status); 
     }
   }
 }

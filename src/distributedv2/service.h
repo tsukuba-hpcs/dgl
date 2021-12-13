@@ -71,6 +71,7 @@ class ServiceManager {
   static void rma_recv_cb(void *arg, uint64_t req_id, void *address);
 public:
   ServiceManager(int rank, int size, Communicator *comm);
+  ~ServiceManager();
   void add_stub_service(std::unique_ptr<StubService> &&serv);
   void add_am_service(std::unique_ptr<AMService> &&serv);
   rma_serv_ret_t add_rma_service(std::unique_ptr<RMAService> &&serv);

@@ -13,6 +13,10 @@ ServiceManager::ServiceManager(int rank, int size, Communicator *comm)
   , comm(comm) {
 }
 
+ServiceManager::~ServiceManager() {
+  comm->unmap();
+}
+
 void ServiceManager::am_recv_cb(void *arg, const void *buffer, size_t length) {
   sm_cb_arg_t *cbarg = (sm_cb_arg_t *)arg;
   ((AMService *)cbarg->serv)->am_recv(cbarg->comm, buffer, length);

@@ -120,6 +120,7 @@ public:
   std::pair<void*, size_t> get_rkey_buf(unsigned id);
   void create_rkey(unsigned rma_id, const void *buffer, size_t length);
   void set_buffer_addr(unsigned rma_id, const intptr_t buffer, size_t length);
+  void unmap();
   void rma_read(int rank, unsigned rma_id, uint64_t req_id, void *buffer, uint64_t offset, size_t length);
   // for Progress
   void progress();
