@@ -44,6 +44,7 @@ public:
 class RMAService: public Service {
 public:
   unsigned rma_id;
+  virtual std::pair<void *, size_t> served_buffer() = 0;
   virtual void rma_read_cb(Communicator *comm, uint64_t req_id, void *buffer) = 0;
 };
 
@@ -52,6 +53,12 @@ struct sm_cb_arg_t {
   Communicator *comm;
   sm_cb_arg_t(Service *serv, Communicator *comm)
   : serv(serv), comm(comm) {};
+};
+
+struct rma_serv_ret_t {
+  unsigned rma_id;
+  void *rkey_buf;
+  size_t rkey_buf_len;
 };
 
 class ServiceManager {
@@ -66,7 +73,8 @@ public:
   ServiceManager(int rank, int size, Communicator *comm);
   void add_stub_service(std::unique_ptr<StubService> &&serv);
   void add_am_service(std::unique_ptr<AMService> &&serv);
-  void add_rma_service(std::unique_ptr<RMAService> &&serv, void *buffer, size_t length);
+  rma_serv_ret_t add_rma_service(std::unique_ptr<RMAService> &&serv);
+  void setup_rma_service(unsigned rma_id, void *rkey_bufs, size_t rkey_buf_len, void *address, size_t addr_len);
   void progress();
   static void run(ServiceManager *self);
 };
