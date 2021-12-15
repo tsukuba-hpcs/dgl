@@ -1,5 +1,4 @@
 #include "service.h"
-#include "context.h"
 
 #include <memory>
 
@@ -11,10 +10,6 @@ ServiceManager::ServiceManager(int rank, int size, Communicator *comm)
   , rank(rank)
   , size(size)
   , comm(comm) {
-}
-
-ServiceManager::~ServiceManager() {
-  comm->unmap();
 }
 
 void ServiceManager::am_recv_cb(void *arg, const void *buffer, size_t length) {
@@ -43,7 +38,12 @@ rma_serv_ret_t ServiceManager::add_rma_service(std::unique_ptr<RMAService> &&ser
   unsigned rma_id = comm->add_rma_handler(buf.first, buf.second, &args.back(), rma_recv_cb);
   ((RMAService *)servs.back().get())->rma_id = rma_id;
   auto r = comm->get_rkey_buf(rma_id);
-  return rma_serv_ret_t{.rma_id = rma_id, .rkey_buf = r.first, .rkey_buf_len = r.second};
+  return rma_serv_ret_t{
+    .rma_id = rma_id,
+    .rkey_buf = r.first,
+    .rkey_buf_len = r.second,
+    .address = buf.first,
+  };
 }
 
 void ServiceManager::setup_rma_service(unsigned rma_id, void *rkey_bufs, size_t rkey_buf_len, void *address, size_t addr_len) {

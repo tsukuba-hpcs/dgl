@@ -1,5 +1,4 @@
 #include "dataloader.h"
-#include "context.h"
 
 
 #include <dgl/runtime/container.h>
@@ -276,7 +275,7 @@ FeatLoader::FeatLoader(feat_loader_arg_t &&arg,
 }
 
 std::pair<void *, size_t> FeatLoader::served_buffer() {
-  int64_t length = local_feats->dtype.bits / 8;
+  size_t length = local_feats->dtype.bits / 8;
   for (int dim = 0; dim < local_feats->ndim; dim++) {
     length *= local_feats->shape[dim];
   }
@@ -330,13 +329,37 @@ void FeatLoader::rma_read_cb(Communicator *comm, uint64_t req_id, void *buffer) 
 
 NodeDataLoader::NodeDataLoader(Communicator *comm, node_dataloader_arg_t &&arg)
 : ServiceManager(arg.rank, arg.size, comm) {
-  
+  neighbor_sampler_arg_t arg0 = {
+    .rank = arg.rank,
+    .size = arg.size,
+    .num_nodes = arg.num_nodes,
+    .num_layers = arg.num_layers,
+    .local_graph = std::move(arg.local_graph),
+    .fanouts = std::move(arg.fanouts),
+  };
+  std::unique_ptr<NeighborSampler> sampler(new NeighborSampler(std::move(arg0), &input_que, &bridge_que));
+  add_am_service(std::move(sampler));
+  feat_loader_arg_t arg1 = {
+    .rank = arg.rank,
+    .size = arg.size,
+    .num_nodes = arg.num_nodes,
+    .local_feats = std::move(arg.local_feats),
+  };
+  std::unique_ptr<FeatLoader> loader(new FeatLoader(std::move(arg1), &bridge_que, &output_que));
+  feat_ret = add_rma_service(std::move(loader));
+}
+
+void NodeDataLoader::enqueue(seed_with_label_t &&item) {
+  input_que.enqueue(std::move(item));
+}
+
+void NodeDataLoader::dequeue(seed_with_feat_t &item) {
+  while (!output_que.try_dequeue(item));
 }
 
 DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2CreateNodeDataLoader")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
-  LOG(INFO) << "_CAPI_DistV2CreateNodeDataLoader is called";
-  ContextRef ctx = args[0];
+  CommunicatorRef comm = args[0];
   int num_layers = args[1];
   int num_nodes = args[2];
   GraphRef local_graph = args[3];
@@ -344,15 +367,15 @@ DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2CreateNodeDataLoader")
   std::vector<int> fanouts(ListValueToVector<int>(_fanouts));
   NDArray local_feats = args[5];
   node_dataloader_arg_t arg = {
-    .rank = ctx->rank,
-    .size = ctx->size,
+    .rank = comm->rank,
+    .size = comm->size,
     .num_nodes = num_nodes,
     .num_layers = num_layers,
     .local_graph = std::move(local_graph),
     .fanouts = fanouts,
     .local_feats = std::move(local_feats),
   };
-  std::shared_ptr<NodeDataLoader> loader(new NodeDataLoader(&ctx->comm, std::move(arg)));
+  std::shared_ptr<NodeDataLoader> loader(new NodeDataLoader(comm.sptr().get(), std::move(arg)));
   *rv = loader;
 });
 
@@ -368,6 +391,26 @@ DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2DequeueToNodeDataLoader")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
   NodeDataLoaderRef loader = args[0];
   *rv = 0;
+});
+
+DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2GetFeatMetaData")
+.set_body([] (DGLArgs args, DGLRetValue* rv) {
+  NodeDataLoaderRef loader = args[0];
+  List<Value> ret;
+  ret.push_back(Value(MakeValue(static_cast<int>(loader->feat_ret.rma_id))));
+  ret.push_back(Value(MakeValue(loader->feat_ret.rkey_buf)));
+  ret.push_back(Value(MakeValue(static_cast<int>(loader->feat_ret.rkey_buf_len))));
+  ret.push_back(Value(MakeValue(loader->feat_ret.address)));
+  *rv = ret;
+});
+
+DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2SetFeatMetaData")
+.set_body([] (DGLArgs args, DGLRetValue* rv) {
+  NodeDataLoaderRef loader = args[0];
+  int rma_id = args[1];
+  std::string rkey_bufs = args[2];
+  std::string addrs = args[3];
+  loader->setup_rma_service(static_cast<unsigned>(rma_id), &rkey_bufs[0], rkey_bufs.size(), &addrs[0], addrs.size());
 });
 
 }

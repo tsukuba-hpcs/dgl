@@ -58,11 +58,10 @@ TEST_F(FeatLoaderTest, TEST1) {
     std::vector<char> rkey_buf(ret0.rkey_buf_len + ret1.rkey_buf_len);
     std::memcpy(&rkey_buf[0], ret0.rkey_buf, ret0.rkey_buf_len);
     std::memcpy(&rkey_buf[ret0.rkey_buf_len], ret1.rkey_buf, ret1.rkey_buf_len);
-    std::vector<char> address(sizeof(uint64_t) * 2);
-    uint64_t feat0_addr = (uint64_t)feat0->data;
-    uint64_t feat1_addr = (uint64_t)feat1->data;
-    std::memcpy(&address[0], &feat0_addr, sizeof(uint64_t));
-    std::memcpy(&address[sizeof(uint64_t)], &feat1_addr, sizeof(uint64_t));
+    fprintf(stderr, "ret0.address=%p\n", ret0.address);
+    std::vector<char> address(sizeof(void *) * 2);
+    std::memcpy(&address[0], &ret0.address, sizeof(void *));
+    std::memcpy(&address[sizeof(void *)], &ret1.address, sizeof(void *));
     sm0.setup_rma_service(ret0.rma_id, &rkey_buf[0], rkey_buf.size(), &address[0], address.size());
     sm1.setup_rma_service(ret1.rma_id, &rkey_buf[0], rkey_buf.size(), &address[0], address.size());
   }

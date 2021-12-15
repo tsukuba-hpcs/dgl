@@ -4,25 +4,23 @@ from .._ffi.object import register_object, ObjectBase
 from .._ffi.function import _init_api
 
 __all__ = [
-    'Context',
+    'Communicator',
 ]
 
 
-@register_object('distributedv2.Context')
-class Context(ObjectBase):
+@register_object('distributedv2.Communicator')
+class Communicator(ObjectBase):
     def __init__(self, comm = MPI.COMM_WORLD):
         self.rank = comm.Get_rank()
         self.size = comm.Get_size()
-        self.comm = comm
+        self.mpi = comm
         self.__init_handle_by_constructor__(
-            _CAPI_DistV2CreateContext,
+            _CAPI_DistV2CreateCommunicator,
             self.rank,
             self.size
         )
         addrs = self.__gather_workeraddr(comm)
-        print(addrs)
         self.__create_endpoints(addrs)
-
 
     def __gather_workeraddr(self, comm):
         # exchange worker address

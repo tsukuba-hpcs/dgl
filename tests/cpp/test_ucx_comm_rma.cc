@@ -3,7 +3,7 @@
 #include <memory>
 #include <chrono>
 #include <vector>
-#include "../src/distributedv2/context.h"
+#include "../src/distributedv2/comm.h"
 
 using namespace dgl::distributedv2;
 

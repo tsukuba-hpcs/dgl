@@ -82,9 +82,7 @@ public:
   int alloc(rma_pool_item_t** item, size_t req_id, void *address, rma_handler_t *handler);
 };
 
-class Communicator {
-  int rank;
-  int size;
+class Communicator: public runtime::Object {
   ucp_context_h ucp_context;
   ucp_worker_h ucp_worker;
   ucp_address_t* addr;
@@ -107,6 +105,8 @@ class Communicator {
   std::vector<rma_handler_t> mem_handlers;
   static void read_cb(void *request, ucs_status_t status, void *user_data);
 public:
+  const int rank;
+  const int size;
   Communicator(int rank, int size, size_t buffer_len = (1<<20));
   ~Communicator();
   // for Endpoints
@@ -114,17 +114,20 @@ public:
   void create_endpoints(std::string addrs);
   // for Active Message
   unsigned add_am_handler(void *arg, comm_am_cb_t cb);
-  void am_post(int rank, unsigned am_id, std::unique_ptr<uint8_t[]> &&data, size_t length);
+  void am_post(int destrank, unsigned am_id, std::unique_ptr<uint8_t[]> &&data, size_t length);
   // for Remote Memory Access
   unsigned add_rma_handler(void *buffer, size_t length, void *arg, comm_rma_cb_t cb);
-  std::pair<void*, size_t> get_rkey_buf(unsigned id);
+  std::pair<void*, size_t> get_rkey_buf(unsigned rma_id);
   void create_rkey(unsigned rma_id, const void *buffer, size_t length);
   void set_buffer_addr(unsigned rma_id, const intptr_t buffer, size_t length);
-  void unmap();
-  void rma_read(int rank, unsigned rma_id, uint64_t req_id, void *buffer, uint64_t offset, size_t length);
+  void rma_read(int destrank, unsigned rma_id, uint64_t req_id, void *buffer, uint64_t offset, size_t length);
   // for Progress
   void progress();
+  static constexpr const char* _type_key = "distributedv2.Communicator";
+  DGL_DECLARE_OBJECT_TYPE_INFO(Communicator, runtime::Object);
 };
+
+DGL_DEFINE_OBJECT_REF(CommunicatorRef, Communicator);
 
 }
 }
