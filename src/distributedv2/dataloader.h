@@ -177,12 +177,15 @@ struct node_dataloader_arg_t {
 };
 
 class NodeDataLoader: public ServiceManager, public runtime::Object {
-  ConcurrentQueue<seed_with_label_t> input;
-  std::queue<seed_with_blocks_t> bridge;
-  ConcurrentQueue<seed_with_feat_t> output;
+  ConcurrentQueue<seed_with_label_t> input_que;
+  std::queue<seed_with_blocks_t> bridge_que;
+  ConcurrentQueue<seed_with_feat_t> output_que;
 public:
+  rma_serv_ret_t feat_ret;
   static constexpr const char* _type_key = "distributedv2.NodeDataLoader";
   NodeDataLoader(Communicator *comm, node_dataloader_arg_t &&arg);
+  void enqueue(seed_with_label_t &&item);
+  void dequeue(seed_with_feat_t &item);
   DGL_DECLARE_OBJECT_TYPE_INFO(NodeDataLoader, runtime::Object);
 };
 

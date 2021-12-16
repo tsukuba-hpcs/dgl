@@ -104,6 +104,7 @@ class NodeDataLoader(ObjectBase):
 
     def __del__(self):
         # stop DataLoader, then
+        _CAPI_DistV2TermNodeDataLoader(self)
         del self.comm
 
     def __init__(self, dataset, num_layers, edges, feats, labels, max_epoch, fanouts = None, batch_size = 1000, prefetch = 2, seed = 777, comm = MPI.COMM_WORLD):
@@ -143,6 +144,7 @@ class NodeDataLoader(ObjectBase):
         _CAPI_DistV2SetFeatMetaData(self, rma_id, rkey_bufs, addrs)
         for _ in range(self.prefetch):
             self.__enqueue()
+        _CAPI_DistV2LaunchNodeDataLoader(self)
 
     def __enqueue(self):
         assert self.epoch < self.max_epoch

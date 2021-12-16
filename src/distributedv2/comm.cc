@@ -244,7 +244,7 @@ void Communicator::am_post(int destrank, unsigned id, std::unique_ptr<uint8_t[]>
 unsigned Communicator::add_am_handler(void *arg, comm_am_cb_t cb) {
   ucs_status_t status;
   unsigned id = recv_handlers.size();
-  recv_handlers.push_back({arg, cb});
+  recv_handlers.push_back(am_handler_t{.arg = arg, .cb = cb});
   ucp_am_handler_param_t param = {
     .field_mask = UCP_AM_HANDLER_PARAM_FIELD_ID | UCP_AM_HANDLER_PARAM_FIELD_ARG | UCP_AM_HANDLER_PARAM_FIELD_CB,
     .id = id,
@@ -291,6 +291,11 @@ int RmaPool::alloc(rma_pool_item_t** item, size_t req_id, void *address, rma_han
   rma_pool_item_t *p = &buffer[cursor];
   if (p->used) {
     LOG(INFO) << "RmaPool alloc item failed: cursor= " << cursor;
+    int used = 0;
+    for (size_t c = 0; c < buffer.size(); c++) {
+      if (buffer[c].used) used++;
+    }
+    LOG(INFO) << "RmaPool used=" << used << " unused=" << buffer.size() - used;
     return 1;
   }
   p->used = true;
@@ -361,6 +366,7 @@ void Communicator::rma_read(int destrank, unsigned rma_id, uint64_t req_id, void
   status = ucp_get_nbx(eps[destrank], buffer, length, handler->address[destrank] + offset, handler->rkey[destrank], &params);
   if (status == NULL) {
     handler->cb(handler->arg, req_id, buffer);
+    item->release();
     return;
   }
   if (UCS_PTR_IS_ERR(status)) {

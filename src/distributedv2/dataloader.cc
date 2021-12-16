@@ -249,7 +249,7 @@ void NeighborSampler::am_recv(Communicator *comm, const void *buffer, size_t len
 
 void NeighborSampler::progress(Communicator *comm) {
   seed_with_label_t input;
-  while (input_que->try_dequeue(input)) {
+  if (input_que->try_dequeue(input)) {
     prog_que[req_id] = neighbor_sampler_prog_t(num_layers, std::move(input));
     scatter(comm, 0, req_id, std::vector<dgl_id_t>(prog_que[req_id].inputs.seeds), PPT_ALL);
     req_id += size;
@@ -283,7 +283,7 @@ std::pair<void *, size_t> FeatLoader::served_buffer() {
 }
 
 void FeatLoader::progress(Communicator *comm) {
-  while (!input_que->empty()) {
+  if (!input_que->empty()) {
     CHECK(input_que->front().blocks.size() > 0);
     seed_with_blocks_t item = std::move(input_que->front());
     CHECK(item.blocks.size() > 0);
@@ -383,13 +383,19 @@ DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2EnqueueToNodeDataLoader")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
   NodeDataLoaderRef loader = args[0];
   List<Value> _seeds = args[1];
-  std::vector<dgl_id_t> seeds(ListValueToVector<dgl_id_t>(_seeds));
   NDArray labels = args[2];
+  seed_with_label_t item = {
+    .seeds = ListValueToVector<dgl_id_t>(_seeds),
+    .labels = std::move(labels),
+  };
+  loader->enqueue(std::move(item));
 });
 
 DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2DequeueToNodeDataLoader")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
   NodeDataLoaderRef loader = args[0];
+  seed_with_feat_t item;
+  loader->dequeue(item);
   *rv = 0;
 });
 
@@ -411,6 +417,18 @@ DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2SetFeatMetaData")
   std::string rkey_bufs = args[2];
   std::string addrs = args[3];
   loader->setup_rma_service(static_cast<unsigned>(rma_id), &rkey_bufs[0], rkey_bufs.size(), &addrs[0], addrs.size());
+});
+
+DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2LaunchNodeDataLoader")
+.set_body([] (DGLArgs args, DGLRetValue* rv) {
+  NodeDataLoaderRef loader = args[0];
+  loader->launch();
+});
+
+DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2TermNodeDataLoader")
+.set_body([] (DGLArgs args, DGLRetValue* rv) {
+  NodeDataLoaderRef loader = args[0];
+  loader->terminate();
 });
 
 }

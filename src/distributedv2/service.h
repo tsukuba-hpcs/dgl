@@ -14,6 +14,7 @@
 #include <atomic>
 #include <queue>
 #include <unordered_map>
+#include <thread>
 
 
 #include "comm.h"
@@ -63,11 +64,13 @@ struct rma_serv_ret_t {
 };
 
 class ServiceManager {
+  static constexpr size_t MAX_SERVICE_LEN = 10;
   std::vector<std::unique_ptr<Service>> servs;
   std::vector<sm_cb_arg_t> args;
   Communicator *comm;
   std::atomic_bool shutdown;
   int rank, size;
+  std::thread progress_thread;
   static void am_recv_cb(void *arg, const void *buffer, size_t length);
   static void rma_recv_cb(void *arg, uint64_t req_id, void *address);
 public:
@@ -77,6 +80,8 @@ public:
   rma_serv_ret_t add_rma_service(std::unique_ptr<RMAService> &&serv);
   void setup_rma_service(unsigned rma_id, void *rkey_bufs, size_t rkey_buf_len, void *address, size_t addr_len);
   void progress();
+  void launch();
+  void terminate();
   static void run(ServiceManager *self);
 };
 

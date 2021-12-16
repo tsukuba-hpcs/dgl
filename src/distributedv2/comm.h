@@ -107,7 +107,7 @@ class Communicator: public runtime::Object {
 public:
   const int rank;
   const int size;
-  Communicator(int rank, int size, size_t buffer_len = (1<<20));
+  Communicator(int rank, int size, size_t buffer_len = (1<<22));
   ~Communicator();
   // for Endpoints
   std::pair<ucp_address_t*, int> get_workeraddr();
