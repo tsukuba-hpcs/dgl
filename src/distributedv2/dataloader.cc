@@ -190,10 +190,11 @@ void inline NeighborSampler::recv_query(Communicator *comm, uint16_t depth, uint
 }
 
 void inline NeighborSampler::enqueue(uint64_t req_id) {
-  LOG(INFO) << "req_id=" << req_id << " is finished";
   std::vector<uint64_t> src_nodes(prog_que[req_id].inputs.seeds);
+  size_t total_edges = 0;
   for (uint16_t dep = 0; dep < num_layers; dep++) {
     auto target_block = &prog_que[req_id].blocks[dep];
+    total_edges += target_block->edges.size();
     std::sort(target_block->edges.begin(), target_block->edges.end());
     target_block->edges.erase(
       std::unique(target_block->edges.begin(), target_block->edges.end())
@@ -210,6 +211,9 @@ void inline NeighborSampler::enqueue(uint64_t req_id) {
   }
   output_que->push(seed_with_blocks_t(std::move(prog_que[req_id])));
   prog_que.erase(req_id);
+  LOG(INFO) << "sampler: req_id=" << req_id << " is finished"
+    << ",total_edges=" << total_edges
+    << ",prog_que.size()=" << prog_que.size();
 }
 
 void inline NeighborSampler::recv_response(Communicator *comm, uint16_t depth, uint64_t ppt, uint64_t req_id, uint16_t len, const void *buffer) {
@@ -320,7 +324,9 @@ void FeatLoader::progress(Communicator *comm) {
 void FeatLoader::rma_read_cb(Communicator *comm, uint64_t req_id, void *buffer) {
   prog_que[req_id].received++;
   if (prog_que[req_id].received == prog_que[req_id].num_input_nodes) {
-    LOG(INFO) << "rma_read_cb: req_id=" << req_id << " is completed";
+    LOG(INFO) << "rma_read_cb: req_id=" << req_id << " is finished"
+      << ",num_input_nodes=" << prog_que[req_id].num_input_nodes
+      << ",prog_que.size()=" << prog_que.size();
     output_que->enqueue(seed_with_feat_t(std::move(prog_que[req_id])));
     prog_que.erase(req_id);
   }
