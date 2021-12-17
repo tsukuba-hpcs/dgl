@@ -8,6 +8,7 @@ from .._ffi.function import _init_api
 from ctypes import c_ubyte, c_void_p, POINTER, cast, sizeof
 from .. import backend as F
 from .. import ndarray as nd
+from collections import deque
 
 __all__ = [
     'NodeDataLoader'
@@ -104,6 +105,7 @@ class NodeDataLoader(ObjectBase):
 
     def __del__(self):
         # stop DataLoader, then
+        self.comm.mpi.barrier()
         _CAPI_DistV2TermNodeDataLoader(self)
         del self.comm
 
@@ -121,7 +123,7 @@ class NodeDataLoader(ObjectBase):
             assert len(fanouts) == self.num_layers
             self.fanouts = fanouts
         else:
-            self.fanouts = [30] * self.num_layers
+            self.fanouts = [-1] * self.num_layers
         self.batch_size = batch_size
         self.local_feats = self.__load_feats(self.comm.rank, self.node_slit, feats)
         self.local_graph = self.__create_distgraph(edges)
@@ -142,12 +144,14 @@ class NodeDataLoader(ObjectBase):
         )
         rma_id, rkey_bufs, addrs = self.__gather_feat_metadata()
         _CAPI_DistV2SetFeatMetaData(self, rma_id, rkey_bufs, addrs)
+        self.num_batches = deque()
         for _ in range(self.prefetch):
             self.__enqueue()
         _CAPI_DistV2LaunchNodeDataLoader(self)
 
     def __enqueue(self):
         assert self.epoch < self.max_epoch
+        self.comm.mpi.barrier()
         g = np.random.default_rng(self.seed + self.epoch)
         indices = g.permutation(len(self.dataset)).tolist()
         indices = indices[:self.total_size]
@@ -158,21 +162,24 @@ class NodeDataLoader(ObjectBase):
             r = min(length, l + self.batch_size)
             _CAPI_DistV2EnqueueToNodeDataLoader(self, indices[l:r],
                 nd.from_dlpack(F.zerocopy_to_dlpack(F.zerocopy_from_numpy(labels[l:r]))))
-        self.num_batches = (length + self.batch_size - 1) // self.batch_size
+        self.num_batches.append((length + self.batch_size - 1) // self.batch_size)
+        print('rank={} self.num_batches.append={}'.format(self.comm.rank, self.num_batches[-1]))
         self.epoch += 1
 
     def __iter__(self):
         self.iter = 0
-        if self.epoch + self.prefetch < self.max_epoch:
+        print('rank={} new epoch'.format(self.comm.rank))
+        if self.epoch < self.max_epoch:
             self.__enqueue()
         return self
 
     def __next__(self):
-        if self.iter < self.num_batches:
+        if self.iter < self.num_batches[0]:
             self.iter += 1
             ret = _CAPI_DistV2DequeueToNodeDataLoader(self)
             return ret
         else:
+            self.num_batches.popleft()
             raise StopIteration
 
 _init_api("dgl.distributedv2", __name__)
