@@ -115,7 +115,6 @@ class NodeDataLoader(ObjectBase):
         self.labels = labels
         self.max_epoch = max_epoch
         self.prefetch = prefetch
-        assert self.prefetch <= self.max_epoch
         self.num_nodes = feats.shape[0]
         print("num_nodes={}".format(self.num_nodes))
         self.node_slit = (self.num_nodes + self.comm.size - 1) // self.comm.size
