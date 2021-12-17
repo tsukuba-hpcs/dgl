@@ -109,7 +109,7 @@ class NodeDataLoader(ObjectBase):
         _CAPI_DistV2TermNodeDataLoader(self)
         del self.comm
 
-    def __init__(self, dataset, num_layers, edges, feats, labels, max_epoch, fanouts = None, batch_size = 1000, prefetch = 2, seed = 777, comm = MPI.COMM_WORLD):
+    def __init__(self, dataset, num_layers, edges, feats, labels, max_epoch, fanouts = None, batch_size = 1000, prefetch = 5, seed = 777, comm = MPI.COMM_WORLD):
         self.comm = Communicator(comm)
         self.num_layers = num_layers
         self.labels = labels
@@ -144,42 +144,39 @@ class NodeDataLoader(ObjectBase):
         )
         rma_id, rkey_bufs, addrs = self.__gather_feat_metadata()
         _CAPI_DistV2SetFeatMetaData(self, rma_id, rkey_bufs, addrs)
-        self.num_batches = deque()
-        for _ in range(self.prefetch):
-            self.__enqueue()
         _CAPI_DistV2LaunchNodeDataLoader(self)
 
     def __enqueue(self):
-        assert self.epoch < self.max_epoch
-        self.comm.mpi.barrier()
-        g = np.random.default_rng(self.seed + self.epoch)
-        indices = g.permutation(len(self.dataset)).tolist()
-        indices = indices[:self.total_size]
-        indices = indices[self.comm.rank:self.total_size:self.comm.size]
-        labels = self.labels[indices]
-        length = len(indices)
-        for l in range(0, length, self.batch_size):
-            r = min(length, l + self.batch_size)
-            _CAPI_DistV2EnqueueToNodeDataLoader(self, indices[l:r],
-                nd.from_dlpack(F.zerocopy_to_dlpack(F.zerocopy_from_numpy(labels[l:r]))))
-        self.num_batches.append((length + self.batch_size - 1) // self.batch_size)
-        print('rank={} self.num_batches.append={}'.format(self.comm.rank, self.num_batches[-1]))
-        self.epoch += 1
+        assert self.prefetch + self.iter < self.num_batch
+        l = self.batch_size * (self.prefetch + self.iter)
+        r = min(self.length, l + self.batch_size)
+        _CAPI_DistV2EnqueueToNodeDataLoader(self, self.indices[l:r],
+                nd.from_dlpack(F.zerocopy_to_dlpack(F.zerocopy_from_numpy(self.iter_labels[l:r]))))
 
     def __iter__(self):
+        assert self.epoch < self.max_epoch
         self.iter = 0
-        print('rank={} new epoch'.format(self.comm.rank))
-        if self.epoch < self.max_epoch:
+        self.comm.mpi.barrier()
+        g = np.random.default_rng(self.seed + self.epoch)
+        self.indices = g.permutation(len(self.dataset)).tolist()
+        self.indices = self.indices[self.comm.rank:self.total_size:self.comm.size]
+        self.iter_labels = self.labels[self.indices]
+        self.length = len(self.indices)
+        self.num_batch = (self.length + self.batch_size - 1) // self.batch_size
+        assert self.prefetch <= self.num_batch
+        for _ in range(self.prefetch):
             self.__enqueue()
+        print('rank={} new epoch'.format(self.comm.rank))
+        self.epoch += 1
         return self
 
     def __next__(self):
-        if self.iter < self.num_batches[0]:
+        if self.iter + self.prefetch < self.num_batch:
+            self.__enqueue()
+        if self.iter < self.num_batch:
             self.iter += 1
             ret = _CAPI_DistV2DequeueToNodeDataLoader(self)
             return ret
-        else:
-            self.num_batches.popleft()
-            raise StopIteration
+        raise StopIteration
 
 _init_api("dgl.distributedv2", __name__)
