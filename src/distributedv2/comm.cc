@@ -34,6 +34,7 @@ Communicator::Communicator(int rank, int size, size_t buffer_len)
   if ((status = ucp_worker_get_address(ucp_worker, &addr, &addrlen)) != UCS_OK) {
     LOG(FATAL) << "ucp_worker_get_address error: " << ucs_status_string(status);
   }
+  ucp_worker_print_info(ucp_worker, stdout);
 }
 
 std::pair<ucp_address_t*, int> Communicator::get_workeraddr() {
