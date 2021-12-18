@@ -58,6 +58,7 @@ void Communicator::create_endpoints(std::string addrs) {
       LOG(FATAL) << "rank=" << rank
         <<"ucp_worker_get_address error: " << ucs_status_string(status);
     }
+    ucp_ep_print_info(eps[cur], stdout);
   }
 }
 
