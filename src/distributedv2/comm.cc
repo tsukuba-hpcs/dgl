@@ -236,11 +236,11 @@ void Communicator::am_post(int destrank, unsigned id, std::unique_ptr<uint8_t[]>
   if (chunks[destrank][id] == NULL) {
     CHECK(!am_pool.alloc(&chunks[destrank][id]));
   }
+  chunks[destrank][id]->append(std::move(data), length);
   if (chunks[destrank][id]->filled()) {
     am_send(destrank, id, chunks[destrank][id]);
-    CHECK(!am_pool.alloc(&chunks[destrank][id]));
+    chunks[destrank][id] = NULL;
   }
-  chunks[destrank][id]->append(std::move(data), length);
 }
 
 unsigned Communicator::add_am_handler(void *arg, comm_am_cb_t cb) {
