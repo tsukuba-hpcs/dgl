@@ -197,9 +197,11 @@ if(USE_UCX)
   message(STATUS "Build with UCX.")
   list(APPEND DGL_SRC ${DGL_SRC_2})
   find_package(PkgConfig)
-  pkg_check_modules(UCX REQUIRED ucx)
+  pkg_search_module(UCX REQUIRED ucx)
   include_directories(${UCX_INCLUDE_DIRS})
+  list(APPEND DGL_LINKER_LIBS -L${UCX_LIBRARY_DIRS})
   list(APPEND DGL_LINKER_LIBS ${UCX_LIBRARIES})
+  message("UCX_LIBRARIES: '${UCX_LIBRARIES}' UCX_LIBRARY_DIRS: '${UCX_LIBRARY_DIRS}'")
 endif(USE_UCX)
 
 
