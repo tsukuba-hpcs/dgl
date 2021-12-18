@@ -105,9 +105,8 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
           for (uint16_t idx = 0; idx < edge_len; idx++) {
             src = *(dgl_id_t *)PTR_BYTE_OFFSET(src_edges.src->data, sizeof(dgl_id_t) * idx);
             dst = *(dgl_id_t *)PTR_BYTE_OFFSET(src_edges.dst->data, sizeof(dgl_id_t) * idx);
-            id = *(dgl_id_t *)PTR_BYTE_OFFSET(src_edges.id->data, sizeof(dgl_id_t) * idx);
             // LOG(INFO) << "self all: idx=" << idx << " src=" << src << " dst=" << dst;
-            prog_que[req_id].blocks[depth].edges.push_back(edge_elem_t{src,dst,id});
+            prog_que[req_id].blocks[depth].edges.push_back(edge_elem_t{src,dst});
             next_seeds.push_back(src);
           }
         } else {
@@ -120,9 +119,8 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
           for (uint16_t idx = 0; idx < fanouts[depth]; idx++) {
             src = *(dgl_id_t *)PTR_BYTE_OFFSET(src_edges.src->data, sizeof(dgl_id_t) * seq[idx]);
             dst = *(dgl_id_t *)PTR_BYTE_OFFSET(src_edges.dst->data, sizeof(dgl_id_t) * seq[idx]);
-            id = *(dgl_id_t *)PTR_BYTE_OFFSET(src_edges.id->data, sizeof(dgl_id_t) * seq[idx]);
             // LOG(INFO) << "self sample: idx=" << idx << " src=" << src << " dst=" << dst;
-            prog_que[req_id].blocks[depth].edges.push_back(edge_elem_t{src,dst,id});
+            prog_que[req_id].blocks[depth].edges.push_back(edge_elem_t{src,dst});
             next_seeds.push_back(src);
           }
         }
@@ -150,7 +148,6 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
             edge_elem_t elem;
             elem.src = *(dgl_id_t *)PTR_BYTE_OFFSET(src_edges.src->data, sizeof(dgl_id_t) * idx);
             elem.dst = *(dgl_id_t *)PTR_BYTE_OFFSET(src_edges.dst->data, sizeof(dgl_id_t) * idx);
-            elem.id = *(dgl_id_t *)PTR_BYTE_OFFSET(src_edges.id->data, sizeof(dgl_id_t) * idx);
             // LOG(INFO) << "other all: idx=" << idx << " src=" << elem.src << " dst=" << elem.dst;
             next_seeds.push_back(elem.src);
             edges.push_back(std::move(elem));
@@ -166,7 +163,6 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
             edge_elem_t elem;
             elem.src = *(dgl_id_t *)PTR_BYTE_OFFSET(src_edges.src->data, sizeof(dgl_id_t) * seq[idx]);
             elem.dst = *(dgl_id_t *)PTR_BYTE_OFFSET(src_edges.dst->data, sizeof(dgl_id_t) * seq[idx]);
-            elem.id = *(dgl_id_t *)PTR_BYTE_OFFSET(src_edges.id->data, sizeof(dgl_id_t) * seq[idx]);
             // LOG(INFO) << "other sample: idx=" << idx << " src=" << elem.src << " dst=" << elem.dst;
             next_seeds.push_back(elem.src);
             edges.push_back(std::move(elem));

@@ -24,7 +24,7 @@ struct seed_with_label_t {
 
 
 struct edge_elem_t {
-  dgl_id_t src, dst, id;
+  dgl_id_t src, dst;
   bool operator==(const edge_elem_t& rhs) const {
     return src == rhs.src && dst == rhs.dst;
   }
