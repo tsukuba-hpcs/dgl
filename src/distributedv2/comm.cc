@@ -64,22 +64,22 @@ void Communicator::create_endpoints(std::string addrs) {
 
 Communicator::~Communicator() {
   ucs_status_t status;
-  for (int rma_id = 0; rma_id < mem_handlers.size(); rma_id++) {
-    CHECK(mem_handlers[rma_id].rkey_buf != NULL);
-    CHECK(mem_handlers[rma_id].rkey[rank] == NULL);
-    ucp_rkey_buffer_release(mem_handlers[rma_id].rkey_buf);
+  for (int rma_id = 0; rma_id < rma_handlers.size(); rma_id++) {
+    CHECK(rma_handlers[rma_id].rkey_buf != NULL);
+    CHECK(rma_handlers[rma_id].rkey[rank] == NULL);
+    ucp_rkey_buffer_release(rma_handlers[rma_id].rkey_buf);
     ucp_mem_attr_t attr = {
       .field_mask = UCP_MEM_ATTR_FIELD_ADDRESS | UCP_MEM_ATTR_FIELD_LENGTH,
     };
-    status = ucp_mem_query(mem_handlers[rma_id].mem, &attr);
+    status = ucp_mem_query(rma_handlers[rma_id].mem, &attr);
     if (status != UCS_OK) {
       LOG(FATAL) << "ucp_mem_query failed with " << ucs_status_string(status);
     }
     for (int srcrank = 0; srcrank < size; srcrank++) {
       if (srcrank == rank) continue;
-      ucp_rkey_destroy(mem_handlers[rma_id].rkey[srcrank]);
+      ucp_rkey_destroy(rma_handlers[rma_id].rkey[srcrank]);
     }
-    status = ucp_mem_unmap(ucp_context, mem_handlers[rma_id].mem);
+    status = ucp_mem_unmap(ucp_context, rma_handlers[rma_id].mem);
     if (status != UCS_OK) {
       LOG(FATAL) << "ucp_mem_unmap failed with " << ucs_status_string(status);
     }
@@ -245,27 +245,27 @@ void Communicator::am_post(int destrank, unsigned id, std::unique_ptr<uint8_t[]>
 
 unsigned Communicator::add_am_handler(void *arg, comm_am_cb_t cb) {
   ucs_status_t status;
-  unsigned id = recv_handlers.size();
-  recv_handlers.push_back(am_handler_t{.arg = arg, .cb = cb});
+  unsigned id = am_handlers.size();
+  am_handlers.push_back(am_handler_t{.arg = arg, .cb = cb});
   ucp_am_handler_param_t param = {
     .field_mask = UCP_AM_HANDLER_PARAM_FIELD_ID | UCP_AM_HANDLER_PARAM_FIELD_ARG | UCP_AM_HANDLER_PARAM_FIELD_CB,
     .id = id,
     .cb = recv_cb,
-    .arg = &recv_handlers.back(),
+    .arg = &am_handlers.back(),
   };
   status = ucp_worker_set_am_recv_handler(ucp_worker, &param);
   if (status != UCS_OK) {
     LOG(FATAL) << "ucp_worker_set_am_recv_handler failed with "
       << ucs_status_string(status);
   }
-  chunks.assign(size, std::vector<iov_pool_item_t *>(recv_handlers.size(), NULL));
+  chunks.assign(size, std::vector<iov_pool_item_t *>(am_handlers.size(), NULL));
   return id;
 }
 
 void Communicator::progress() {
   for (int destrank = 0; destrank < size; destrank++) {
     if (destrank == rank) continue;
-    for (unsigned id = 0; id < recv_handlers.size(); id++) {
+    for (unsigned id = 0; id < am_handlers.size(); id++) {
       if (chunks[destrank][id] == NULL) continue;
       if (chunks[destrank][id]->empty()) continue;
       am_send(destrank, id, chunks[destrank][id]);
@@ -317,7 +317,7 @@ unsigned Communicator::add_rma_handler(void *buffer, size_t length, void *arg, c
     .address = buffer,
     .length = length,
   };
-  unsigned rma_id = mem_handlers.size();
+  unsigned rma_id = rma_handlers.size();
   ucp_mem_h mem;
   void *rkey_buf;
   size_t rkey_buf_len;
@@ -331,15 +331,15 @@ unsigned Communicator::add_rma_handler(void *buffer, size_t length, void *arg, c
     LOG(FATAL) << "ucp_rkey_pack failed with "
       << ucs_status_string(status);
   }
-  mem_handlers.push_back(rma_handler_t(arg, cb, mem, rkey_buf, rkey_buf_len));
-  mem_handlers.back().rkey.resize(size);
-  mem_handlers.back().address.resize(size);
+  rma_handlers.push_back(rma_handler_t(arg, cb, mem, rkey_buf, rkey_buf_len));
+  rma_handlers.back().rkey.resize(size);
+  rma_handlers.back().address.resize(size);
   return rma_id;
 }
 
 std::pair<void*, size_t> Communicator::get_rkey_buf(unsigned rma_id) {
-  CHECK(mem_handlers.size() > rma_id);
-  return std::make_pair(mem_handlers[rma_id].rkey_buf, mem_handlers[rma_id].rkey_buf_len);
+  CHECK(rma_handlers.size() > rma_id);
+  return std::make_pair(rma_handlers[rma_id].rkey_buf, rma_handlers[rma_id].rkey_buf_len);
 }
 
 void Communicator::read_cb(void *request, ucs_status_t status, void *user_data) {
@@ -356,7 +356,7 @@ void Communicator::read_cb(void *request, ucs_status_t status, void *user_data) 
 void Communicator::rma_read(int destrank, unsigned rma_id, uint64_t req_id, void *buffer, uint64_t offset, size_t length) {
   ucs_status_ptr_t status;
   rma_pool_item_t *item;
-  rma_handler_t *handler = &mem_handlers[rma_id];
+  rma_handler_t *handler = &rma_handlers[rma_id];
   CHECK(!rma_pool.alloc(&item, req_id, buffer, handler));
   ucp_request_param_t params = {
     .op_attr_mask = UCP_OP_ATTR_FIELD_CALLBACK | UCP_OP_ATTR_FIELD_USER_DATA,
@@ -381,9 +381,9 @@ void Communicator::rma_read(int destrank, unsigned rma_id, uint64_t req_id, void
 
 
 void Communicator::set_buffer_addr(unsigned rma_id, const intptr_t buffer, size_t length) {
-  CHECK(mem_handlers.size() > rma_id);
+  CHECK(rma_handlers.size() > rma_id);
   CHECK(length == sizeof(uint64_t) * size);
-  rma_handler_t *handler = &mem_handlers[rma_id];
+  rma_handler_t *handler = &rma_handlers[rma_id];
   CHECK(handler->address.size() == size);
   for (int srcrank = 0; srcrank < size; srcrank++) {
     if (srcrank == rank) {
@@ -397,8 +397,8 @@ void Communicator::set_buffer_addr(unsigned rma_id, const intptr_t buffer, size_
 }
 
 void Communicator::create_rkey(unsigned rma_id, const void *buffer, size_t length) {
-  CHECK(mem_handlers.size() > rma_id);
-  rma_handler_t *handler = &mem_handlers[rma_id];
+  CHECK(rma_handlers.size() > rma_id);
+  rma_handler_t *handler = &rma_handlers[rma_id];
   CHECK(handler->rkey_buf_len * size == length);
   CHECK(handler->rkey.size() == size);
   ucs_status_t status;

@@ -90,7 +90,7 @@ class Communicator: public runtime::Object {
   std::vector<ucp_ep_h> eps;
   // for Active Message
   IovPool am_pool;
-  std::vector<am_handler_t> recv_handlers;
+  std::vector<am_handler_t> am_handlers;
   std::vector<std::vector<iov_pool_item_t*>> chunks;
   static ucs_status_t recv_cb(
     void *arg,
@@ -102,7 +102,7 @@ class Communicator: public runtime::Object {
   void am_send(int rank, unsigned id, iov_pool_item_t *chunk);
   // for Remote Memory Access
   RmaPool rma_pool;
-  std::vector<rma_handler_t> mem_handlers;
+  std::vector<rma_handler_t> rma_handlers;
   static void read_cb(void *request, ucs_status_t status, void *user_data);
 public:
   const int rank;
