@@ -261,7 +261,6 @@ unsigned Communicator::add_am_handler(void *arg, comm_am_cb_t cb) {
 }
 
 void Communicator::progress() {
-  ucp_worker_progress(ucp_worker);
   for (int destrank = 0; destrank < size; destrank++) {
     if (destrank == rank) continue;
     for (unsigned id = 0; id < recv_handlers.size(); id++) {
@@ -271,6 +270,7 @@ void Communicator::progress() {
       chunks[destrank][id] = NULL;
     }
   }
+  ucp_worker_progress(ucp_worker);
 }
 
 rma_pool_item_t::rma_pool_item_t(rma_handler_t *handler = NULL)
