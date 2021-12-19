@@ -38,7 +38,7 @@ class NodeDataLoader(ObjectBase):
     2. each process calculate where to shard temporary edges.
     3. exchange temporary edges by Alltoallv()
     """
-    def __create_distgraph(self, edges):
+    def __create_edgeshard(self, edges):
         temp_edges = self.__load_temp_edge(edges)
         vals, cnts = self.__count_dest_rank(temp_edges)
         s_counts = array('Q', [0] * self.comm.size)
@@ -78,7 +78,10 @@ class NodeDataLoader(ObjectBase):
 
         temp_edges = None
 
-        return dgl.graph_index.from_edge_list((recv_edges[:, 0], recv_edges[:, 1]), True)
+        # sort by dest node id.
+        recv_edges = recv_edges[recv_edges[:, 1].argsort()]
+
+        return recv_edges[:, 0], recv_edges[:, 1]
 
     def __load_feats(self, rank, node_slit, feats):
         l = self.node_slit * rank
@@ -125,8 +128,7 @@ class NodeDataLoader(ObjectBase):
             self.fanouts = [-1] * self.num_layers
         self.batch_size = batch_size
         self.local_feats = self.__load_feats(self.comm.rank, self.node_slit, feats)
-        self.local_graph = self.__create_distgraph(edges)
-        print("self.local_graph.number_of_nodes()={}".format(self.local_graph.number_of_nodes()))
+        src, dst = self.__create_edgeshard(edges)
         self.epoch = 0
         self.seed = seed
         self.dataset = dataset
@@ -137,9 +139,10 @@ class NodeDataLoader(ObjectBase):
             self.comm,
             self.num_layers,
             self.num_nodes,
-            self.local_graph,
             self.fanouts,
-            nd.from_dlpack(F.zerocopy_to_dlpack(F.zerocopy_from_numpy(self.local_feats)))
+            nd.from_dlpack(F.zerocopy_to_dlpack(F.zerocopy_from_numpy(self.local_feats))),
+            nd.from_dlpack(F.zerocopy_to_dlpack(F.zerocopy_from_numpy(src))),
+            nd.from_dlpack(F.zerocopy_to_dlpack(F.zerocopy_from_numpy(dst)))
         )
         rma_id, rkey_bufs, addrs = self.__gather_feat_metadata()
         _CAPI_DistV2SetFeatMetaData(self, rma_id, rkey_bufs, addrs)

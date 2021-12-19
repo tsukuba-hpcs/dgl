@@ -17,14 +17,16 @@ namespace distributedv2 {
 
 using namespace dmlc::moodycamel;
 
+using node_id_t = int64_t;
+
 struct seed_with_label_t {
-  std::vector<dgl_id_t> seeds;
+  std::vector<node_id_t> seeds;
   NDArray labels;
 };
 
 
 struct edge_elem_t {
-  dgl_id_t src, dst;
+  node_id_t src, dst;
   bool operator==(const edge_elem_t& rhs) const {
     return src == rhs.src && dst == rhs.dst;
   }
@@ -39,10 +41,20 @@ using edges_t = std::vector<edge_elem_t>;
 
 struct block_t {
   edges_t edges;
-  std::vector<dgl_id_t> src_nodes;
+  std::vector<node_id_t> src_nodes;
 };
 
 // Neighbor Sampler
+
+struct edge_shard_t {
+  NDArray src;
+  NDArray dst;
+  uint64_t node_slit;
+  int rank;
+  std::vector<size_t> offset;
+  edge_shard_t(NDArray &&_src, NDArray &&_dst, int rank, int size, uint64_t num_nodes);
+  void in_edges(node_id_t **src_ids, size_t *length, node_id_t dst_id);
+};
 
 struct neighbor_sampler_prog_t {
   seed_with_label_t inputs;
@@ -56,7 +68,7 @@ struct neighbor_sampler_prog_t {
 };
 
 struct seed_with_blocks_t {
-  std::vector<dgl_id_t> seeds;
+  std::vector<node_id_t> seeds;
   NDArray labels;
   std::vector<block_t> blocks;
   seed_with_blocks_t() {}
@@ -64,7 +76,7 @@ struct seed_with_blocks_t {
   : seeds(std::move(prog.inputs.seeds))
   , labels(std::move(prog.inputs.labels))
   , blocks(std::move(prog.blocks)) {}
-  seed_with_blocks_t(std::vector<dgl_id_t> &&seeds, NDArray &&labels, std::vector<block_t> &&blocks)
+  seed_with_blocks_t(std::vector<node_id_t> &&seeds, NDArray &&labels, std::vector<block_t> &&blocks)
   : seeds(std::move(seeds))
   , labels(std::move(labels))
   , blocks(std::move(blocks)) {}
@@ -75,18 +87,18 @@ struct neighbor_sampler_arg_t {
   int size;
   uint64_t num_nodes;
   uint16_t num_layers;
-  GraphRef local_graph;
   std::vector<int> fanouts;
+  edge_shard_t edge_shard;
 };
 
 /**
  * Binary format of the request:
- * uint64_t (req_id<<1) | uint64_t ppt | uint16_t depth | uint16_t nodes' length | [uint64_t node_id] * length
+ * uint64_t (req_id<<1) | uint64_t ppt | uint16_t depth | uint16_t nodes' length | [node_id_t node_id] * length
  * Binary format of the response:
- * uint64_t (req_id<<1)+1 | uint64_t ppt | uint16_t depth | uint16_t edges' length | [uint64_t src_id uint64_t dst_id uint64_t edge_id] * length
+ * uint64_t (req_id<<1)+1 | uint64_t ppt | uint16_t depth | uint16_t edges' length | [node_id_t src_id node_id_t dst_id] * length
  */
 class NeighborSampler: public AMService {
-  GraphRef local_graph;
+  edge_shard_t edge_shard;
   uint16_t num_layers;
   std::vector<int> fanouts;
   int rank, size;
@@ -98,11 +110,11 @@ class NeighborSampler: public AMService {
   std::queue<seed_with_blocks_t>  *output_que;
   std::unordered_map<uint64_t, neighbor_sampler_prog_t> prog_que;
   void inline enqueue(uint64_t req_id);
-  void inline send_query(Communicator *comm, uint16_t dstrank, uint16_t depth, uint64_t req_id, dgl_id_t *nodes, uint16_t len, uint64_t ppt);
+  void inline send_query(Communicator *comm, uint16_t dstrank, uint16_t depth, uint64_t req_id, node_id_t *nodes, uint16_t len, uint64_t ppt);
   void inline send_response(Communicator *comm, uint16_t depth, uint64_t req_id, edge_elem_t *edges, uint16_t len, uint64_t ppt);
   void inline recv_query(Communicator *comm, uint16_t depth, uint64_t ppt, uint64_t req_id, uint16_t len, const void *buffer);
   void inline recv_response(Communicator *comm, uint16_t depth, uint64_t ppt, uint64_t req_id, uint16_t len, const void *buffer);
-  void scatter(Communicator *comm, uint16_t depth, uint64_t req_id, std::vector<dgl_id_t> &&seeds, uint64_t ppt);
+  void scatter(Communicator *comm, uint16_t depth, uint64_t req_id, std::vector<node_id_t> &&seeds, uint64_t ppt);
 public:
   NeighborSampler(neighbor_sampler_arg_t &&arg,
     ConcurrentQueue<seed_with_label_t> *input_que,
@@ -126,7 +138,7 @@ struct feat_loader_prog_t {
 };
 
 struct seed_with_feat_t {
-  std::vector<dgl_id_t> seeds;
+  std::vector<node_id_t> seeds;
   NDArray labels;
   std::vector<block_t> blocks;
   NDArray feats;
@@ -171,9 +183,9 @@ struct node_dataloader_arg_t {
   int size;
   uint64_t num_nodes;
   uint16_t num_layers;
-  GraphRef local_graph;
   std::vector<int> fanouts;
   NDArray local_feats;
+  edge_shard_t edge_shard;
 };
 
 class NodeDataLoader: public ServiceManager, public runtime::Object {

@@ -65,9 +65,9 @@ TEST_F(FeatLoaderTest, TEST1) {
     sm0.setup_rma_service(ret0.rma_id, &rkey_buf[0], rkey_buf.size(), &address[0], address.size());
     sm1.setup_rma_service(ret1.rma_id, &rkey_buf[0], rkey_buf.size(), &address[0], address.size());
   }
-  std::vector<dgl::dgl_id_t> src_nodes{1, 6};
+  std::vector<node_id_t> src_nodes{1, 6};
   seed_with_blocks_t item(
-    std::vector<dgl::dgl_id_t>{}
+    std::vector<node_id_t>{}
   , dgl::NDArray::FromVector(std::vector<int>{0})
   , std::vector<block_t>{block_t{
       .edges = std::vector<edge_elem_t>{}

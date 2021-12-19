@@ -29,6 +29,38 @@ protected:
   }
 };
 
+TEST_F(ServTest, EdgeShard1) {
+  dgl::IdArray edge0_src(dgl::aten::VecToIdArray(std::vector<int>{4,5},64))
+                ,edge0_dst(dgl::aten::VecToIdArray(std::vector<int>{0,0},64))
+                ,edge1_src(dgl::aten::VecToIdArray(std::vector<int>{3,2,1},64))
+                ,edge1_dst(dgl::aten::VecToIdArray(std::vector<int>{4,4,5},64));
+  edge_shard_t shard0(std::move(edge0_src), std::move(edge0_dst), 0, 2, 6);
+  edge_shard_t shard1(std::move(edge1_src), std::move(edge1_dst), 1, 2, 6);
+  node_id_t *src_ids;
+  size_t length;
+  shard0.in_edges(&src_ids, &length, 0);
+  ASSERT_EQ(length, 2);
+  ASSERT_EQ(src_ids[0], 4);
+  ASSERT_EQ(src_ids[1], 5);
+  shard0.in_edges(&src_ids, &length, 1);
+  ASSERT_EQ(length, 0);
+  ASSERT_EQ(src_ids, (node_id_t *)NULL);
+  shard0.in_edges(&src_ids, &length, 2);
+  ASSERT_EQ(length, 0);
+  ASSERT_EQ(src_ids, (node_id_t *)NULL);
+
+  shard1.in_edges(&src_ids, &length, 3);
+  ASSERT_EQ(length, 0);
+  ASSERT_EQ(src_ids, (node_id_t *)NULL);
+  shard1.in_edges(&src_ids, &length, 4);
+  ASSERT_EQ(length, 2);
+  ASSERT_EQ(src_ids[0], 3);
+  ASSERT_EQ(src_ids[1], 2);
+  shard1.in_edges(&src_ids, &length, 5);
+  ASSERT_EQ(length, 1);
+  ASSERT_EQ(src_ids[0], 1);
+}
+
 TEST_F(ServTest, TEST1) {
   {
     dgl::IdArray edge0_src(dgl::aten::VecToIdArray(std::vector<int>{4,5},64))
@@ -40,16 +72,16 @@ TEST_F(ServTest, TEST1) {
       .size = 2,
       .num_nodes = 6,
       .num_layers = 2,
-      .local_graph = dgl::GraphRef(dgl::Graph::CreateFromCOO(6, edge0_src, edge0_dst)),
       .fanouts = std::vector<int>{},
+      .edge_shard = edge_shard_t(std::move(edge0_src), std::move(edge0_dst), 0, 2, 6),
     };
     neighbor_sampler_arg_t arg1 = {
       .rank = 1,
       .size = 2,
       .num_nodes = 6,
       .num_layers = 2,
-      .local_graph = dgl::GraphRef(dgl::Graph::CreateFromCOO(6, edge1_src, edge1_dst)),
       .fanouts = std::vector<int>{},
+      .edge_shard = edge_shard_t(std::move(edge1_src), std::move(edge1_dst), 1, 2, 6),
     };
     auto sampler0 =
       std::unique_ptr<NeighborSampler>(new NeighborSampler(std::move(arg0), &input0, &output0));
@@ -60,7 +92,7 @@ TEST_F(ServTest, TEST1) {
     sm1.add_am_service(std::move(sampler1));
   }
 
-  std::vector<uint64_t> seeds{0};
+  std::vector<node_id_t> seeds{0};
   seed_with_label_t item = {
     .seeds = seeds,
   };
@@ -98,25 +130,25 @@ TEST_F(ServTest, TEST1) {
 
 TEST_F(ServTest, KARATE_CLUB_1) {
   {
-    dgl::IdArray edge0_src(dgl::aten::VecToIdArray(std::vector<int>{0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,2,3,3,3,4,4,5,5,5,6},64))
-                ,edge0_dst(dgl::aten::VecToIdArray(std::vector<int>{1,2,3,4,5,6,7,8,10,11,12,13,2,3,7,13,3,7,8,9,13,7,12,13,6,10,6,10,16,16},64))
-                ,edge1_src(dgl::aten::VecToIdArray(std::vector<int>{0,0,0,0,1,1,1,1,2,2,2,8,8,8,9,13,14,14,15,15,18,18,19,20,20,22,22,23,23,23,23,23,24,24,24,25,26,26,27,28,28,29,29,30,30,31,31,32},64))
-                ,edge1_dst(dgl::aten::VecToIdArray(std::vector<int>{17,19,21,31,17,19,21,30,27,28,32,30,32,33,33,33,32,33,32,33,32,33,33,32,33,32,33,25,27,29,32,33,25,27,31,31,29,33,33,31,33,32,33,32,33,32,33,33},64));
+    dgl::IdArray edge0_src(dgl::aten::VecToIdArray(std::vector<int>{0,0,1,0,1,2,0,0,0,4,5,0,1,2,3,0,2,2,0,4,5,0,0,3,0,1,2,3,5,6},64))
+                ,edge0_dst(dgl::aten::VecToIdArray(std::vector<int>{1,2,2,3,3,3,4,5,6,6,6,7,7,7,7,8,8,9,10,10,10,11,12,12,13,13,13,13,16,16},64))
+                ,edge1_src(dgl::aten::VecToIdArray(std::vector<int>{0,1,0,1,0,1,23,24,2,23,24,2,23,26,1,8,0,24,25,28,2,8,14,15,18,20,22,23,29,30,31,8,9,13,14,15,18,19,20,22,23,26,27,28,29,30,31,32},64))
+                ,edge1_dst(dgl::aten::VecToIdArray(std::vector<int>{17,17,19,19,21,21,25,25,27,27,27,28,29,29,30,30,31,31,31,31,32,32,32,32,32,32,32,32,32,32,32,33,33,33,33,33,33,33,33,33,33,33,33,33,33,33,33,33},64));
     neighbor_sampler_arg_t arg0 = {
       .rank = 0,
       .size = 2,
       .num_nodes = 34,
       .num_layers = 1,
-      .local_graph = dgl::GraphRef(dgl::Graph::CreateFromCOO(34, edge0_src, edge0_dst)),
       .fanouts =  std::vector<int>{},
+      .edge_shard = edge_shard_t(std::move(edge0_src), std::move(edge0_dst), 0, 2, 34),
     };
     neighbor_sampler_arg_t arg1 = {
       .rank = 1,
       .size = 2,
       .num_nodes = 34,
       .num_layers = 1,
-      .local_graph = dgl::GraphRef(dgl::Graph::CreateFromCOO(34, edge1_src, edge1_dst)),
       .fanouts =  std::vector<int>{},
+      .edge_shard = edge_shard_t(std::move(edge1_src), std::move(edge1_dst), 1, 2, 34),
     };
     auto sampler0 =
       std::unique_ptr<NeighborSampler>(new NeighborSampler(std::move(arg0), &input0, &output0));
@@ -126,7 +158,7 @@ TEST_F(ServTest, KARATE_CLUB_1) {
     sm0.add_am_service(std::move(sampler0));
     sm1.add_am_service(std::move(sampler1));
   }
-  std::vector<uint64_t> seeds{33};
+  std::vector<node_id_t> seeds{33};
   seed_with_label_t item = {
     .seeds = seeds,
   };
@@ -176,25 +208,25 @@ TEST_F(ServTest, KARATE_CLUB_1) {
 
 TEST_F(ServTest, KARATE_CLUB_2) {
   {
-    dgl::IdArray edge0_src(dgl::aten::VecToIdArray(std::vector<int>{0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,2,3,3,3,4,4,5,5,5,6},64))
-                ,edge0_dst(dgl::aten::VecToIdArray(std::vector<int>{1,2,3,4,5,6,7,8,10,11,12,13,2,3,7,13,3,7,8,9,13,7,12,13,6,10,6,10,16,16},64))
-                ,edge1_src(dgl::aten::VecToIdArray(std::vector<int>{0,0,0,0,1,1,1,1,2,2,2,8,8,8,9,13,14,14,15,15,18,18,19,20,20,22,22,23,23,23,23,23,24,24,24,25,26,26,27,28,28,29,29,30,30,31,31,32},64))
-                ,edge1_dst(dgl::aten::VecToIdArray(std::vector<int>{17,19,21,31,17,19,21,30,27,28,32,30,32,33,33,33,32,33,32,33,32,33,33,32,33,32,33,25,27,29,32,33,25,27,31,31,29,33,33,31,33,32,33,32,33,32,33,33},64));
+    dgl::IdArray edge0_src(dgl::aten::VecToIdArray(std::vector<int>{0,0,1,0,1,2,0,0,0,4,5,0,1,2,3,0,2,2,0,4,5,0,0,3,0,1,2,3,5,6},64))
+                ,edge0_dst(dgl::aten::VecToIdArray(std::vector<int>{1,2,2,3,3,3,4,5,6,6,6,7,7,7,7,8,8,9,10,10,10,11,12,12,13,13,13,13,16,16},64))
+                ,edge1_src(dgl::aten::VecToIdArray(std::vector<int>{0,1,0,1,0,1,23,24,2,23,24,2,23,26,1,8,0,24,25,28,2,8,14,15,18,20,22,23,29,30,31,8,9,13,14,15,18,19,20,22,23,26,27,28,29,30,31,32},64))
+                ,edge1_dst(dgl::aten::VecToIdArray(std::vector<int>{17,17,19,19,21,21,25,25,27,27,27,28,29,29,30,30,31,31,31,31,32,32,32,32,32,32,32,32,32,32,32,33,33,33,33,33,33,33,33,33,33,33,33,33,33,33,33,33},64));
     neighbor_sampler_arg_t arg0 = {
       .rank = 0,
       .size = 2,
       .num_nodes = 34,
       .num_layers = 2,
-      .local_graph = dgl::GraphRef(dgl::Graph::CreateFromCOO(34, edge0_src, edge0_dst)),
       .fanouts =  std::vector<int>{},
+      .edge_shard = edge_shard_t(std::move(edge0_src), std::move(edge0_dst), 0, 2, 34),
     };
     neighbor_sampler_arg_t arg1 = {
       .rank = 1,
       .size = 2,
       .num_nodes = 34,
       .num_layers = 2,
-      .local_graph = dgl::GraphRef(dgl::Graph::CreateFromCOO(34, edge1_src, edge1_dst)),
       .fanouts =  std::vector<int>{},
+      .edge_shard = edge_shard_t(std::move(edge1_src), std::move(edge1_dst), 1, 2, 34),
     };
     auto sampler0 =
       std::unique_ptr<NeighborSampler>(new NeighborSampler(std::move(arg0), &input0, &output0));
@@ -204,7 +236,7 @@ TEST_F(ServTest, KARATE_CLUB_2) {
     sm0.add_am_service(std::move(sampler0));
     sm1.add_am_service(std::move(sampler1));
   }
-  std::vector<uint64_t> seeds{33};
+  std::vector<node_id_t> seeds{33};
   seed_with_label_t item = {
     .seeds = seeds,
   };
@@ -284,25 +316,25 @@ TEST_F(ServTest, KARATE_CLUB_2) {
 
 TEST_F(ServTest, KARATE_CLUB_3) {
   {
-    dgl::IdArray edge0_src(dgl::aten::VecToIdArray(std::vector<int>{0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,2,3,3,3,4,4,5,5,5,6},64))
-                ,edge0_dst(dgl::aten::VecToIdArray(std::vector<int>{1,2,3,4,5,6,7,8,10,11,12,13,2,3,7,13,3,7,8,9,13,7,12,13,6,10,6,10,16,16},64))
-                ,edge1_src(dgl::aten::VecToIdArray(std::vector<int>{0,0,0,0,1,1,1,1,2,2,2,8,8,8,9,13,14,14,15,15,18,18,19,20,20,22,22,23,23,23,23,23,24,24,24,25,26,26,27,28,28,29,29,30,30,31,31,32},64))
-                ,edge1_dst(dgl::aten::VecToIdArray(std::vector<int>{17,19,21,31,17,19,21,30,27,28,32,30,32,33,33,33,32,33,32,33,32,33,33,32,33,32,33,25,27,29,32,33,25,27,31,31,29,33,33,31,33,32,33,32,33,32,33,33},64));
+    dgl::IdArray edge0_src(dgl::aten::VecToIdArray(std::vector<int>{0,0,1,0,1,2,0,0,0,4,5,0,1,2,3,0,2,2,0,4,5,0,0,3,0,1,2,3,5,6},64))
+                ,edge0_dst(dgl::aten::VecToIdArray(std::vector<int>{1,2,2,3,3,3,4,5,6,6,6,7,7,7,7,8,8,9,10,10,10,11,12,12,13,13,13,13,16,16},64))
+                ,edge1_src(dgl::aten::VecToIdArray(std::vector<int>{0,1,0,1,0,1,23,24,2,23,24,2,23,26,1,8,0,24,25,28,2,8,14,15,18,20,22,23,29,30,31,8,9,13,14,15,18,19,20,22,23,26,27,28,29,30,31,32},64))
+                ,edge1_dst(dgl::aten::VecToIdArray(std::vector<int>{17,17,19,19,21,21,25,25,27,27,27,28,29,29,30,30,31,31,31,31,32,32,32,32,32,32,32,32,32,32,32,33,33,33,33,33,33,33,33,33,33,33,33,33,33,33,33,33},64));
     neighbor_sampler_arg_t arg0 = {
       .rank = 0,
       .size = 2,
       .num_nodes = 34,
       .num_layers = 3,
-      .local_graph = dgl::GraphRef(dgl::Graph::CreateFromCOO(34, edge0_src, edge0_dst)),
       .fanouts =  std::vector<int>{},
+      .edge_shard = edge_shard_t(std::move(edge0_src), std::move(edge0_dst), 0, 2, 34),
     };
     neighbor_sampler_arg_t arg1 = {
       .rank = 1,
       .size = 2,
       .num_nodes = 34,
       .num_layers = 3,
-      .local_graph = dgl::GraphRef(dgl::Graph::CreateFromCOO(34, edge1_src, edge1_dst)),
       .fanouts =  std::vector<int>{},
+      .edge_shard = edge_shard_t(std::move(edge1_src), std::move(edge1_dst), 1, 2, 34),
     };
     auto sampler0 =
       std::unique_ptr<NeighborSampler>(new NeighborSampler(std::move(arg0), &input0, &output0));
@@ -312,7 +344,7 @@ TEST_F(ServTest, KARATE_CLUB_3) {
     sm0.add_am_service(std::move(sampler0));
     sm1.add_am_service(std::move(sampler1));
   }
-  std::vector<uint64_t> seeds{33};
+  std::vector<node_id_t> seeds{33};
   seed_with_label_t item = {
     .seeds = seeds,
   };
@@ -366,25 +398,25 @@ TEST_F(ServTest, KARATE_CLUB_3) {
 
 TEST_F(ServTest, KARATE_CLUB_4) {
   {
-    dgl::IdArray edge0_src(dgl::aten::VecToIdArray(std::vector<int>{0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,2,3,3,3,4,4,5,5,5,6},64))
-                ,edge0_dst(dgl::aten::VecToIdArray(std::vector<int>{1,2,3,4,5,6,7,8,10,11,12,13,2,3,7,13,3,7,8,9,13,7,12,13,6,10,6,10,16,16},64))
-                ,edge1_src(dgl::aten::VecToIdArray(std::vector<int>{0,0,0,0,1,1,1,1,2,2,2,8,8,8,9,13,14,14,15,15,18,18,19,20,20,22,22,23,23,23,23,23,24,24,24,25,26,26,27,28,28,29,29,30,30,31,31,32},64))
-                ,edge1_dst(dgl::aten::VecToIdArray(std::vector<int>{17,19,21,31,17,19,21,30,27,28,32,30,32,33,33,33,32,33,32,33,32,33,33,32,33,32,33,25,27,29,32,33,25,27,31,31,29,33,33,31,33,32,33,32,33,32,33,33},64));
+    dgl::IdArray edge0_src(dgl::aten::VecToIdArray(std::vector<int>{0,0,1,0,1,2,0,0,0,4,5,0,1,2,3,0,2,2,0,4,5,0,0,3,0,1,2,3,5,6},64))
+                ,edge0_dst(dgl::aten::VecToIdArray(std::vector<int>{1,2,2,3,3,3,4,5,6,6,6,7,7,7,7,8,8,9,10,10,10,11,12,12,13,13,13,13,16,16},64))
+                ,edge1_src(dgl::aten::VecToIdArray(std::vector<int>{0,1,0,1,0,1,23,24,2,23,24,2,23,26,1,8,0,24,25,28,2,8,14,15,18,20,22,23,29,30,31,8,9,13,14,15,18,19,20,22,23,26,27,28,29,30,31,32},64))
+                ,edge1_dst(dgl::aten::VecToIdArray(std::vector<int>{17,17,19,19,21,21,25,25,27,27,27,28,29,29,30,30,31,31,31,31,32,32,32,32,32,32,32,32,32,32,32,33,33,33,33,33,33,33,33,33,33,33,33,33,33,33,33,33},64));
     neighbor_sampler_arg_t arg0 = {
       .rank = 0,
       .size = 2,
       .num_nodes = 34,
       .num_layers = 4,
-      .local_graph = dgl::GraphRef(dgl::Graph::CreateFromCOO(34, edge0_src, edge0_dst)),
       .fanouts =  std::vector<int>{},
+      .edge_shard = edge_shard_t(std::move(edge0_src), std::move(edge0_dst), 0, 2, 34),
     };
     neighbor_sampler_arg_t arg1 = {
       .rank = 1,
       .size = 2,
       .num_nodes = 34,
       .num_layers = 4,
-      .local_graph = dgl::GraphRef(dgl::Graph::CreateFromCOO(34, edge1_src, edge1_dst)),
       .fanouts =  std::vector<int>{},
+      .edge_shard = edge_shard_t(std::move(edge1_src), std::move(edge1_dst), 1, 2, 34),
     };
     auto sampler0 =
       std::unique_ptr<NeighborSampler>(new NeighborSampler(std::move(arg0), &input0, &output0));
@@ -394,7 +426,7 @@ TEST_F(ServTest, KARATE_CLUB_4) {
     sm0.add_am_service(std::move(sampler0));
     sm1.add_am_service(std::move(sampler1));
   }
-  std::vector<uint64_t> seeds{33};
+  std::vector<node_id_t> seeds{33};
   seed_with_label_t item = {
     .seeds = seeds,
   };
@@ -426,25 +458,25 @@ TEST_F(ServTest, KARATE_CLUB_4) {
 
 TEST_F(ServTest, KARATE_CLUB_5) {
   {
-    dgl::IdArray edge0_src(dgl::aten::VecToIdArray(std::vector<int>{0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,2,3,3,3,4,4,5,5,5,6},64))
-                ,edge0_dst(dgl::aten::VecToIdArray(std::vector<int>{1,2,3,4,5,6,7,8,10,11,12,13,2,3,7,13,3,7,8,9,13,7,12,13,6,10,6,10,16,16},64))
-                ,edge1_src(dgl::aten::VecToIdArray(std::vector<int>{0,0,0,0,1,1,1,1,2,2,2,8,8,8,9,13,14,14,15,15,18,18,19,20,20,22,22,23,23,23,23,23,24,24,24,25,26,26,27,28,28,29,29,30,30,31,31,32},64))
-                ,edge1_dst(dgl::aten::VecToIdArray(std::vector<int>{17,19,21,31,17,19,21,30,27,28,32,30,32,33,33,33,32,33,32,33,32,33,33,32,33,32,33,25,27,29,32,33,25,27,31,31,29,33,33,31,33,32,33,32,33,32,33,33},64));
+    dgl::IdArray edge0_src(dgl::aten::VecToIdArray(std::vector<int>{0,0,1,0,1,2,0,0,0,4,5,0,1,2,3,0,2,2,0,4,5,0,0,3,0,1,2,3,5,6},64))
+                ,edge0_dst(dgl::aten::VecToIdArray(std::vector<int>{1,2,2,3,3,3,4,5,6,6,6,7,7,7,7,8,8,9,10,10,10,11,12,12,13,13,13,13,16,16},64))
+                ,edge1_src(dgl::aten::VecToIdArray(std::vector<int>{0,1,0,1,0,1,23,24,2,23,24,2,23,26,1,8,0,24,25,28,2,8,14,15,18,20,22,23,29,30,31,8,9,13,14,15,18,19,20,22,23,26,27,28,29,30,31,32},64))
+                ,edge1_dst(dgl::aten::VecToIdArray(std::vector<int>{17,17,19,19,21,21,25,25,27,27,27,28,29,29,30,30,31,31,31,31,32,32,32,32,32,32,32,32,32,32,32,33,33,33,33,33,33,33,33,33,33,33,33,33,33,33,33,33},64));
     neighbor_sampler_arg_t arg0 = {
       .rank = 0,
       .size = 2,
       .num_nodes = 34,
       .num_layers = 5,
-      .local_graph = dgl::GraphRef(dgl::Graph::CreateFromCOO(34, edge0_src, edge0_dst)),
       .fanouts =  std::vector<int>{},
+      .edge_shard = edge_shard_t(std::move(edge0_src), std::move(edge0_dst), 0, 2, 34),
     };
     neighbor_sampler_arg_t arg1 = {
       .rank = 1,
       .size = 2,
       .num_nodes = 34,
       .num_layers = 5,
-      .local_graph = dgl::GraphRef(dgl::Graph::CreateFromCOO(34, edge1_src, edge1_dst)),
       .fanouts =  std::vector<int>{},
+      .edge_shard = edge_shard_t(std::move(edge1_src), std::move(edge1_dst), 1, 2, 34),
     };
     auto sampler0 =
       std::unique_ptr<NeighborSampler>(new NeighborSampler(std::move(arg0), &input0, &output0));
@@ -454,7 +486,7 @@ TEST_F(ServTest, KARATE_CLUB_5) {
     sm0.add_am_service(std::move(sampler0));
     sm1.add_am_service(std::move(sampler1));
   }
-  std::vector<uint64_t> seeds{33};
+  std::vector<node_id_t> seeds{33};
   seed_with_label_t item = {
     .seeds = seeds,
   };
@@ -486,16 +518,16 @@ TEST_F(ServTest, FANOUT_TEST1) {
       .size = 2,
       .num_nodes = 6,
       .num_layers = 2,
-      .local_graph = dgl::GraphRef(dgl::Graph::CreateFromCOO(6, edge0_src, edge0_dst)),
       .fanouts = fanouts,
+      .edge_shard = edge_shard_t(std::move(edge0_src), std::move(edge0_dst), 0, 2, 6),
     };
     neighbor_sampler_arg_t arg1 = {
       .rank = 1,
       .size = 2,
       .num_nodes = 6,
       .num_layers = 2,
-      .local_graph = dgl::GraphRef(dgl::Graph::CreateFromCOO(6, edge1_src, edge1_dst)),
       .fanouts = fanouts,
+      .edge_shard = edge_shard_t(std::move(edge1_src), std::move(edge1_dst), 1, 2, 6),
     };
     auto sampler0 =
       std::unique_ptr<NeighborSampler>(new NeighborSampler(std::move(arg0), &input0, &output0));
@@ -506,7 +538,7 @@ TEST_F(ServTest, FANOUT_TEST1) {
     sm1.add_am_service(std::move(sampler1));
   }
 
-  std::vector<uint64_t> seeds{0};
+  std::vector<node_id_t> seeds{0};
   seed_with_label_t item = {
     .seeds = seeds,
   };
@@ -528,26 +560,26 @@ TEST_F(ServTest, FANOUT_TEST1) {
 
 TEST_F(ServTest, FANOUT_KARATE_CLUB_1) {
   {
-    dgl::IdArray edge0_src(dgl::aten::VecToIdArray(std::vector<int>{0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,2,3,3,3,4,4,5,5,5,6},64))
-                ,edge0_dst(dgl::aten::VecToIdArray(std::vector<int>{1,2,3,4,5,6,7,8,10,11,12,13,2,3,7,13,3,7,8,9,13,7,12,13,6,10,6,10,16,16},64))
-                ,edge1_src(dgl::aten::VecToIdArray(std::vector<int>{0,0,0,0,1,1,1,1,2,2,2,8,8,8,9,13,14,14,15,15,18,18,19,20,20,22,22,23,23,23,23,23,24,24,24,25,26,26,27,28,28,29,29,30,30,31,31,32},64))
-                ,edge1_dst(dgl::aten::VecToIdArray(std::vector<int>{17,19,21,31,17,19,21,30,27,28,32,30,32,33,33,33,32,33,32,33,32,33,33,32,33,32,33,25,27,29,32,33,25,27,31,31,29,33,33,31,33,32,33,32,33,32,33,33},64));
+    dgl::IdArray edge0_src(dgl::aten::VecToIdArray(std::vector<int>{0,0,1,0,1,2,0,0,0,4,5,0,1,2,3,0,2,2,0,4,5,0,0,3,0,1,2,3,5,6},64))
+                ,edge0_dst(dgl::aten::VecToIdArray(std::vector<int>{1,2,2,3,3,3,4,5,6,6,6,7,7,7,7,8,8,9,10,10,10,11,12,12,13,13,13,13,16,16},64))
+                ,edge1_src(dgl::aten::VecToIdArray(std::vector<int>{0,1,0,1,0,1,23,24,2,23,24,2,23,26,1,8,0,24,25,28,2,8,14,15,18,20,22,23,29,30,31,8,9,13,14,15,18,19,20,22,23,26,27,28,29,30,31,32},64))
+                ,edge1_dst(dgl::aten::VecToIdArray(std::vector<int>{17,17,19,19,21,21,25,25,27,27,27,28,29,29,30,30,31,31,31,31,32,32,32,32,32,32,32,32,32,32,32,33,33,33,33,33,33,33,33,33,33,33,33,33,33,33,33,33},64));
     std::vector<int> fanouts{5};
     neighbor_sampler_arg_t arg0 = {
       .rank = 0,
       .size = 2,
       .num_nodes = 34,
       .num_layers = 1,
-      .local_graph = dgl::GraphRef(dgl::Graph::CreateFromCOO(34, edge0_src, edge0_dst)),
       .fanouts = fanouts,
+      .edge_shard = edge_shard_t(std::move(edge0_src), std::move(edge0_dst), 0, 2, 34),
     };
     neighbor_sampler_arg_t arg1 = {
       .rank = 1,
       .size = 2,
       .num_nodes = 34,
       .num_layers = 1,
-      .local_graph = dgl::GraphRef(dgl::Graph::CreateFromCOO(34, edge1_src, edge1_dst)),
       .fanouts = fanouts,
+      .edge_shard = edge_shard_t(std::move(edge1_src), std::move(edge1_dst), 1, 2, 34),
     };
     auto sampler0 =
       std::unique_ptr<NeighborSampler>(new NeighborSampler(std::move(arg0), &input0, &output0));
@@ -557,7 +589,7 @@ TEST_F(ServTest, FANOUT_KARATE_CLUB_1) {
     sm0.add_am_service(std::move(sampler0));
     sm1.add_am_service(std::move(sampler1));
   }
-  std::vector<uint64_t> seeds{33};
+  std::vector<node_id_t> seeds{33};
   seed_with_label_t item = {
     .seeds = seeds,
   };

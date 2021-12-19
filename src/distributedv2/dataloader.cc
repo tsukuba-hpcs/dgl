@@ -14,13 +14,65 @@ namespace distributedv2 {
 
 using namespace dgl::runtime;
 
+edge_shard_t::edge_shard_t(NDArray &&_src, NDArray &&_dst, int rank, int size, uint64_t num_nodes)
+: src(std::move(_src))
+, dst(std::move(_dst))
+, rank(rank)
+, node_slit((num_nodes + size - 1) / size) {
+  if (src->dtype.code != DLDataTypeCode::kDLInt || src->dtype.bits != 64) {
+    LOG(FATAL) << "edge src dtype is invalid";
+  }
+  if (dst->dtype.code != DLDataTypeCode::kDLInt || dst->dtype.bits != 64) {
+    LOG(FATAL) << "edge dst dtype is invalid";
+  }
+  if (src->ndim != dst->ndim || src.NumElements() != dst.NumElements()) {
+    LOG(FATAL) << "edge src and dst must be same shape";
+  }
+  for (int64_t d = 0; d < src->ndim; d++) {
+    CHECK(src->shape[d] == dst->shape[d]);
+  }
+  // Check dst id is between [node_slit * rank, node_slit * (rank+1))
+  for (dgl_id_t idx = 0; idx < dst.NumElements(); idx++) {
+    node_id_t dst_id = *(node_id_t *)PTR_BYTE_OFFSET(dst->data, sizeof(node_id_t) * idx);
+    CHECK(node_slit * rank <= dst_id);
+    CHECK(dst_id < node_slit * (rank+1));
+  }
+  // Check dst id is sorted
+  for (dgl_id_t idx = 1; idx < dst.NumElements(); idx++) {
+    node_id_t dst_id0 = *(node_id_t *)PTR_BYTE_OFFSET(dst->data, sizeof(node_id_t) * (idx-1));
+    node_id_t dst_id1 = *(node_id_t *)PTR_BYTE_OFFSET(dst->data, sizeof(node_id_t) * idx);
+    CHECK(dst_id0 <= dst_id1);
+  }
+  offset.assign(node_slit + 1, src.NumElements());
+  // edge where dst_id==k -> [offset[k], offset[k+1])
+  for (dgl_id_t idx = 0; idx < src.NumElements(); idx++) {
+    node_id_t dst_id = *(node_id_t *)PTR_BYTE_OFFSET(dst->data, sizeof(node_id_t) * idx);
+    offset[dst_id % node_slit] = std::min(offset[dst_id % node_slit], idx);
+  }
+  for (dgl_id_t id = node_slit; id > 0; id--) {
+    offset[id-1] = std::min(offset[id-1], offset[id]);
+  }
+}
+
+void edge_shard_t::in_edges(node_id_t **src_ids, size_t *length, node_id_t dst_id) {
+  CHECK(node_slit * rank <= dst_id);
+  CHECK(dst_id < node_slit * (rank+1));
+  CHECK(offset[dst_id % node_slit] <= offset[dst_id % node_slit + 1]);
+  *length = offset[dst_id % node_slit + 1] - offset[dst_id % node_slit];
+  if (*length == 0) {
+    *src_ids = NULL;
+    return;
+  }
+  *src_ids = (node_id_t *)PTR_BYTE_OFFSET(src->data, sizeof(node_id_t) * offset[dst_id % node_slit]);
+}
+
 NeighborSampler::NeighborSampler(neighbor_sampler_arg_t &&arg,
   ConcurrentQueue<seed_with_label_t> *input_que,
   std::queue<seed_with_blocks_t> *output_que)
   : rank(arg.rank)
   , size(arg.size)
   , node_slit((arg.num_nodes + arg.size - 1) / arg.size)
-  , local_graph(arg.local_graph)
+  , edge_shard(std::move(arg.edge_shard))
   , num_layers(arg.num_layers)
   , req_id(arg.rank)
   , input_que(input_que)
@@ -33,8 +85,8 @@ NeighborSampler::NeighborSampler(neighbor_sampler_arg_t &&arg,
   }
 }
 
-void inline NeighborSampler::send_query(Communicator *comm, uint16_t dstrank, uint16_t depth, uint64_t req_id, uint64_t *nodes, uint16_t len, uint64_t ppt) {
-  size_t data_len = HEADER_LEN + len * sizeof(dgl_id_t);
+void inline NeighborSampler::send_query(Communicator *comm, uint16_t dstrank, uint16_t depth, uint64_t req_id, node_id_t *nodes, uint16_t len, uint64_t ppt) {
+  size_t data_len = HEADER_LEN + len * sizeof(node_id_t);
   size_t offset = 0;
   std::unique_ptr<uint8_t[]> data = std::unique_ptr<uint8_t[]>(new uint8_t[data_len]);
   *(uint64_t *)PTR_BYTE_OFFSET(data.get(), offset) = (req_id<<1);
@@ -45,7 +97,7 @@ void inline NeighborSampler::send_query(Communicator *comm, uint16_t dstrank, ui
   offset += sizeof(uint16_t);
   *(uint16_t *)PTR_BYTE_OFFSET(data.get(), offset) = len;
   offset += sizeof(uint16_t);
-  std::memcpy(PTR_BYTE_OFFSET(data.get(), offset), nodes, len * sizeof(dgl_id_t));
+  std::memcpy(PTR_BYTE_OFFSET(data.get(), offset), nodes, len * sizeof(node_id_t));
   comm->am_post(dstrank, am_id, std::move(data), data_len);
 }
 
@@ -66,7 +118,7 @@ void inline NeighborSampler::send_response(Communicator *comm, uint16_t depth, u
   comm->am_post(dstrank, am_id, std::move(data), data_len);
 }
 
-void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_id, std::vector<dgl_id_t> &&seeds, uint64_t ppt) {
+void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_id, std::vector<node_id_t> &&seeds, uint64_t ppt) {
   CHECK(ppt > 0);
   uint64_t rem_ppt = ppt;
   std::sort(seeds.begin(), seeds.end());
@@ -95,18 +147,18 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
     rem_ppt -= cur_ppt;
     // self request
     if (req_id % size == rank) {
-      dgl_id_t src, dst, id;
-      std::vector<dgl_id_t> next_seeds;
+      node_id_t *src_ids;
+      size_t edge_len;
+      node_id_t src;
+      std::vector<node_id_t> next_seeds;
       for (uint16_t dst_idx = l; dst_idx < r; dst_idx++) {
-        dgl::EdgeArray src_edges = local_graph->InEdges(aten::VecToIdArray(std::vector<dgl_id_t>{seeds[dst_idx]}, 64));
-        int64_t edge_len = src_edges.id.NumElements();
+        edge_shard.in_edges(&src_ids, &edge_len, seeds[dst_idx]);
         // LOG(INFO) << "dst_idx= " << dst_idx << " edge_len=" << edge_len << "depth=" << depth << "fanouts[depth]= " << fanouts[depth];
         if (fanouts[depth] < 0 || edge_len <= fanouts[depth]) {
           for (uint16_t idx = 0; idx < edge_len; idx++) {
-            src = *(dgl_id_t *)PTR_BYTE_OFFSET(src_edges.src->data, sizeof(dgl_id_t) * idx);
-            dst = *(dgl_id_t *)PTR_BYTE_OFFSET(src_edges.dst->data, sizeof(dgl_id_t) * idx);
+            src = src_ids[idx];
             // LOG(INFO) << "self all: idx=" << idx << " src=" << src << " dst=" << dst;
-            prog_que[req_id].blocks[depth].edges.push_back(edge_elem_t{src,dst});
+            prog_que[req_id].blocks[depth].edges.push_back(edge_elem_t{src, seeds[dst_idx]});
             next_seeds.push_back(src);
           }
         } else {
@@ -117,10 +169,9 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
             std::swap(seq[idx], seq[engine() % idx]);
           }
           for (uint16_t idx = 0; idx < fanouts[depth]; idx++) {
-            src = *(dgl_id_t *)PTR_BYTE_OFFSET(src_edges.src->data, sizeof(dgl_id_t) * seq[idx]);
-            dst = *(dgl_id_t *)PTR_BYTE_OFFSET(src_edges.dst->data, sizeof(dgl_id_t) * seq[idx]);
+            src = src_ids[seq[idx]];
             // LOG(INFO) << "self sample: idx=" << idx << " src=" << src << " dst=" << dst;
-            prog_que[req_id].blocks[depth].edges.push_back(edge_elem_t{src,dst});
+            prog_que[req_id].blocks[depth].edges.push_back(edge_elem_t{src, seeds[dst_idx]});
             next_seeds.push_back(src);
           }
         }
@@ -138,16 +189,15 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
     // other request
     } else {
       std::vector<edge_elem_t> edges;
-      std::vector<dgl_id_t> next_seeds;
+      std::vector<node_id_t> next_seeds;
+      node_id_t *src_ids;
+      size_t edge_len;
       for (uint16_t dst_idx = l; dst_idx < r; dst_idx++) {
-        dgl::EdgeArray src_edges = local_graph->InEdges(aten::VecToIdArray(std::vector<dgl_id_t>{seeds[dst_idx]}, 64));
-        int64_t edge_len = src_edges.id.NumElements();
+        edge_shard.in_edges(&src_ids, &edge_len, seeds[dst_idx]);
         // LOG(INFO) << "dst_idx= " << dst_idx << " edge_len=" << edge_len << "depth=" << depth << "fanouts[depth]= " << fanouts[depth];
         if (fanouts[depth] < 0 || edge_len <= fanouts[depth]) {
           for (uint16_t idx = 0; idx < edge_len; idx++) {
-            edge_elem_t elem;
-            elem.src = *(dgl_id_t *)PTR_BYTE_OFFSET(src_edges.src->data, sizeof(dgl_id_t) * idx);
-            elem.dst = *(dgl_id_t *)PTR_BYTE_OFFSET(src_edges.dst->data, sizeof(dgl_id_t) * idx);
+            edge_elem_t elem{.src = src_ids[idx],.dst = seeds[dst_idx]};
             // LOG(INFO) << "other all: idx=" << idx << " src=" << elem.src << " dst=" << elem.dst;
             next_seeds.push_back(elem.src);
             edges.push_back(std::move(elem));
@@ -160,9 +210,7 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
             std::swap(seq[idx], seq[engine() % idx]);
           }
           for (uint16_t idx = 0; idx < fanouts[depth]; idx++) {
-            edge_elem_t elem;
-            elem.src = *(dgl_id_t *)PTR_BYTE_OFFSET(src_edges.src->data, sizeof(dgl_id_t) * seq[idx]);
-            elem.dst = *(dgl_id_t *)PTR_BYTE_OFFSET(src_edges.dst->data, sizeof(dgl_id_t) * seq[idx]);
+            edge_elem_t elem{.src = src_ids[seq[idx]], .dst = seeds[dst_idx]};
             // LOG(INFO) << "other sample: idx=" << idx << " src=" << elem.src << " dst=" << elem.dst;
             next_seeds.push_back(elem.src);
             edges.push_back(std::move(elem));
@@ -180,13 +228,13 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
 }
 
 void inline NeighborSampler::recv_query(Communicator *comm, uint16_t depth, uint64_t ppt, uint64_t req_id, uint16_t len, const void *buffer) {
-  std::vector<dgl_id_t> seeds(len);
-  std::memcpy(seeds.data(), buffer, sizeof(dgl_id_t) * len);
+  std::vector<node_id_t> seeds(len);
+  std::memcpy(seeds.data(), buffer, sizeof(node_id_t) * len);
   scatter(comm, depth, req_id, std::move(seeds), ppt);
 }
 
 void inline NeighborSampler::enqueue(uint64_t req_id) {
-  std::vector<uint64_t> src_nodes(prog_que[req_id].inputs.seeds);
+  std::vector<node_id_t> src_nodes(prog_que[req_id].inputs.seeds);
   size_t total_edges = 0;
   for (uint16_t dep = 0; dep < num_layers; dep++) {
     auto target_block = &prog_que[req_id].blocks[dep];
@@ -243,7 +291,7 @@ void NeighborSampler::am_recv(Communicator *comm, const void *buffer, size_t len
     CHECK(offset + sizeof(edge_elem_t) * data_length == length);
   } else {
     recv_query(comm, depth, ppt, shifted_id>>1, data_length, PTR_BYTE_OFFSET(buffer, offset));
-    CHECK(offset + sizeof(dgl_id_t) * data_length == length);
+    CHECK(offset + sizeof(node_id_t) * data_length == length);
   }
 }
 
@@ -251,7 +299,7 @@ void NeighborSampler::progress(Communicator *comm) {
   seed_with_label_t input;
   if (input_que->try_dequeue(input)) {
     prog_que[req_id] = neighbor_sampler_prog_t(num_layers, std::move(input));
-    scatter(comm, 0, req_id, std::vector<dgl_id_t>(prog_que[req_id].inputs.seeds), PPT_ALL);
+    scatter(comm, 0, req_id, std::vector<node_id_t>(prog_que[req_id].inputs.seeds), PPT_ALL);
     req_id += size;
   }
 }
@@ -289,7 +337,7 @@ void FeatLoader::progress(Communicator *comm) {
     CHECK(item.blocks.size() > 0);
     prog_que[req_id] = feat_loader_prog_t(std::move(item));
     input_que->pop();
-    std::vector<dgl_id_t> &input_nodes = prog_que[req_id].inputs.blocks.back().src_nodes;
+    std::vector<node_id_t> &input_nodes = prog_que[req_id].inputs.blocks.back().src_nodes;
     std::vector<int64_t> shape{
       static_cast<int64_t>(input_nodes.size()),
       static_cast<int64_t>(feats_row)
@@ -297,7 +345,7 @@ void FeatLoader::progress(Communicator *comm) {
     prog_que[req_id].feats = NDArray::Empty(shape, local_feats->dtype, DLContext{kDLCPU, 0});
 
     for (size_t row = 0; row < shape[0]; row++) {
-      dgl_id_t node = input_nodes[row];
+      node_id_t node = input_nodes[row];
       int src_rank = node / node_slit;
       uint64_t offset = (node % node_slit) * feats_row_size;
       void *recv_buffer = PTR_BYTE_OFFSET(prog_que[req_id].feats->data, feats_row_size * row);
@@ -336,8 +384,8 @@ NodeDataLoader::NodeDataLoader(Communicator *comm, node_dataloader_arg_t &&arg)
     .size = arg.size,
     .num_nodes = arg.num_nodes,
     .num_layers = arg.num_layers,
-    .local_graph = std::move(arg.local_graph),
     .fanouts = std::move(arg.fanouts),
+    .edge_shard = std::move(arg.edge_shard),
   };
   std::unique_ptr<NeighborSampler> sampler(new NeighborSampler(std::move(arg0), &input_que, &bridge_que));
   add_am_service(std::move(sampler));
@@ -364,18 +412,19 @@ DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2CreateNodeDataLoader")
   CommunicatorRef comm = args[0];
   int num_layers = args[1];
   int num_nodes = args[2];
-  GraphRef local_graph = args[3];
-  List<Value> _fanouts = args[4];
+  List<Value> _fanouts = args[3];
   std::vector<int> fanouts(ListValueToVector<int>(_fanouts));
-  NDArray local_feats = args[5];
+  NDArray local_feats = args[4];
+  NDArray src = args[5];
+  NDArray dst = args[6];
   node_dataloader_arg_t arg = {
     .rank = comm->rank,
     .size = comm->size,
     .num_nodes = num_nodes,
     .num_layers = num_layers,
-    .local_graph = std::move(local_graph),
     .fanouts = fanouts,
     .local_feats = std::move(local_feats),
+    .edge_shard = edge_shard_t(std::move(src),std::move(dst), comm->rank, comm->size, num_nodes),
   };
   std::shared_ptr<NodeDataLoader> loader(new NodeDataLoader(comm.sptr().get(), std::move(arg)));
   *rv = loader;
@@ -387,7 +436,7 @@ DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2EnqueueToNodeDataLoader")
   List<Value> _seeds = args[1];
   NDArray labels = args[2];
   seed_with_label_t item = {
-    .seeds = ListValueToVector<dgl_id_t>(_seeds),
+    .seeds = ListValueToVector<node_id_t>(_seeds),
     .labels = std::move(labels),
   };
   loader->enqueue(std::move(item));
