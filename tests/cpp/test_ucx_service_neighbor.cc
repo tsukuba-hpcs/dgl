@@ -18,9 +18,10 @@ protected:
   , comm1(1, 2, 100)
   , sm0(0, 2, &comm0)
   , sm1(1, 2, &comm1)
-  {
-    auto p0 = comm0.get_workeraddr();
-    auto p1 = comm1.get_workeraddr();
+  {}
+  void create_ep() {
+    auto p0 = comm0.create_workers();
+    auto p1 = comm1.create_workers();
     std::string addrs(p0.second + p1.second, (char)0);
     std::memcpy(&addrs[0], p0.first, p0.second);
     std::memcpy(&addrs[p0.second], p1.first, p1.second);
@@ -30,6 +31,7 @@ protected:
 };
 
 TEST_F(ServTest, EdgeShard1) {
+  create_ep();
   dgl::IdArray edge0_src(dgl::aten::VecToIdArray(std::vector<int>{4,5},64))
                 ,edge0_dst(dgl::aten::VecToIdArray(std::vector<int>{0,0},64))
                 ,edge1_src(dgl::aten::VecToIdArray(std::vector<int>{3,2,1},64))
@@ -90,6 +92,7 @@ TEST_F(ServTest, TEST1) {
 
     sm0.add_am_service(std::move(sampler0));
     sm1.add_am_service(std::move(sampler1));
+    create_ep();
   }
 
   std::vector<node_id_t> seeds{0};
@@ -157,6 +160,7 @@ TEST_F(ServTest, KARATE_CLUB_1) {
 
     sm0.add_am_service(std::move(sampler0));
     sm1.add_am_service(std::move(sampler1));
+    create_ep();
   }
   std::vector<node_id_t> seeds{33};
   seed_with_label_t item = {
@@ -235,6 +239,7 @@ TEST_F(ServTest, KARATE_CLUB_2) {
 
     sm0.add_am_service(std::move(sampler0));
     sm1.add_am_service(std::move(sampler1));
+    create_ep();
   }
   std::vector<node_id_t> seeds{33};
   seed_with_label_t item = {
@@ -343,6 +348,7 @@ TEST_F(ServTest, KARATE_CLUB_3) {
 
     sm0.add_am_service(std::move(sampler0));
     sm1.add_am_service(std::move(sampler1));
+    create_ep();
   }
   std::vector<node_id_t> seeds{33};
   seed_with_label_t item = {
@@ -425,6 +431,7 @@ TEST_F(ServTest, KARATE_CLUB_4) {
 
     sm0.add_am_service(std::move(sampler0));
     sm1.add_am_service(std::move(sampler1));
+    create_ep();
   }
   std::vector<node_id_t> seeds{33};
   seed_with_label_t item = {
@@ -485,6 +492,7 @@ TEST_F(ServTest, KARATE_CLUB_5) {
 
     sm0.add_am_service(std::move(sampler0));
     sm1.add_am_service(std::move(sampler1));
+    create_ep();
   }
   std::vector<node_id_t> seeds{33};
   seed_with_label_t item = {
@@ -536,6 +544,7 @@ TEST_F(ServTest, FANOUT_TEST1) {
 
     sm0.add_am_service(std::move(sampler0));
     sm1.add_am_service(std::move(sampler1));
+    create_ep();
   }
 
   std::vector<node_id_t> seeds{0};
@@ -588,6 +597,7 @@ TEST_F(ServTest, FANOUT_KARATE_CLUB_1) {
 
     sm0.add_am_service(std::move(sampler0));
     sm1.add_am_service(std::move(sampler1));
+    create_ep();
   }
   std::vector<node_id_t> seeds{33};
   seed_with_label_t item = {

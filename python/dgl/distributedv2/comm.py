@@ -19,23 +19,21 @@ class Communicator(ObjectBase):
             self.rank,
             self.size
         )
-        addrs = self.__gather_workeraddr(comm)
-        self.__create_endpoints(addrs)
 
-    def __gather_workeraddr(self, comm):
-        # exchange worker address
-        addr, addrlen = _CAPI_DistV2GetWorkerAddr(self)
+    def allgather(self, addr, addrlen):
         UByteArr = c_ubyte * addrlen
         UByteArrPtr = POINTER(UByteArr)
         addr = cast(addr, UByteArrPtr)
         addr = bytearray(addr.contents)
         s_msg = [addr, addrlen, MPI.BYTE]
-        addrs = bytearray(addrlen * comm.Get_size())
+        addrs = bytearray(addrlen * self.size)
         r_msg = [addrs, addrlen, MPI.BYTE]
-        comm.Allgather(s_msg, r_msg)
+        self.mpi.Allgather(s_msg, r_msg)
         return addrs
 
-    def __create_endpoints(self, addrs):
-        _CAPI_DistV2CreateEndpoints(self, addrs)
+    def create_endpoints(self):
+        addr, addrlen = _CAPI_DistV2CreateWorker(self)
+        worker_addrs = self.allgather(addr, addrlen)
+        _CAPI_DistV2CreateEndpoints(self, worker_addrs)
 
 _init_api("dgl.distributedv2", __name__)

@@ -33,7 +33,7 @@ void ServiceManager::rma_recv_cb(void *arg, uint64_t req_id, void *address) {
   ((RMAService *)cbarg->serv)->rma_read_cb(cbarg->comm, req_id, address);
 }
 
-rma_serv_ret_t ServiceManager::add_rma_service(std::unique_ptr<RMAService> &&serv) {
+void ServiceManager::add_rma_service(std::unique_ptr<RMAService> &&serv) {
   servs.push_back(std::move(serv));
   sm_cb_arg_t arg(servs.back().get(), comm);
   args.push_back(std::move(arg));
@@ -41,18 +41,14 @@ rma_serv_ret_t ServiceManager::add_rma_service(std::unique_ptr<RMAService> &&ser
   unsigned rma_id = comm->add_rma_handler(buf.first, buf.second, &args.back(), rma_recv_cb);
   CHECK(rma_id < MAX_SERVICE_LEN);
   ((RMAService *)servs.back().get())->rma_id = rma_id;
-  auto r = comm->get_rkey_buf(rma_id);
-  return rma_serv_ret_t{
-    .rma_id = rma_id,
-    .rkey_buf = r.first,
-    .rkey_buf_len = r.second,
-    .address = buf.first,
-  };
 }
 
-void ServiceManager::setup_rma_service(unsigned rma_id, void *rkey_bufs, size_t rkey_buf_len, void *address, size_t addr_len) {
-  comm->create_rkey(rma_id, rkey_bufs, rkey_buf_len);
-  comm->set_buffer_addr(rma_id, (intptr_t)address, addr_len);
+rma_mem_ret_t ServiceManager::map_rma_service() {
+  return comm->rma_mem_map();
+}
+
+void ServiceManager::prepare_rma_service(void *rkeybuf, size_t rkeybuf_len, void *address, size_t address_len) {
+  comm->prepare_rma(rkeybuf, rkeybuf_len, address, address_len);
 }
 
 void ServiceManager::add_stub_service(std::unique_ptr<StubService> &&serv) {

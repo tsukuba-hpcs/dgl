@@ -56,13 +56,6 @@ struct sm_cb_arg_t {
   : serv(serv), comm(comm) {};
 };
 
-struct rma_serv_ret_t {
-  unsigned rma_id;
-  void *rkey_buf;
-  size_t rkey_buf_len;
-  void *address;
-};
-
 class ServiceManager {
   static constexpr size_t MAX_SERVICE_LEN = 10;
   std::vector<std::unique_ptr<Service>> servs;
@@ -77,8 +70,9 @@ public:
   ServiceManager(int rank, int size, Communicator *comm);
   void add_stub_service(std::unique_ptr<StubService> &&serv);
   void add_am_service(std::unique_ptr<AMService> &&serv);
-  rma_serv_ret_t add_rma_service(std::unique_ptr<RMAService> &&serv);
-  void setup_rma_service(unsigned rma_id, void *rkey_bufs, size_t rkey_buf_len, void *address, size_t addr_len);
+  void add_rma_service(std::unique_ptr<RMAService> &&serv);
+  rma_mem_ret_t map_rma_service();
+  void prepare_rma_service(void *rkeybuf, size_t rkeybuf_len, void *address, size_t address_len);
   void progress();
   void launch();
   void terminate();

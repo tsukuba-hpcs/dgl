@@ -11,14 +11,30 @@ class CommRMATest : public ::testing::Test {
 protected:
   std::vector<char> buf0, buf1, recv_buf;
   Communicator comm0, comm1;
-  CommRMATest() : comm0(0, 2, 100), comm1(1, 2, 100) {
-    auto p0 = comm0.get_workeraddr();
-    auto p1 = comm1.get_workeraddr();
+  CommRMATest() : comm0(0, 2, 100), comm1(1, 2, 100) {}
+  void create_ep() {
+    auto p0 = comm0.create_workers();
+    auto p1 = comm1.create_workers();
     std::string addrs(p0.second + p1.second, (char)0);
     std::memcpy(&addrs[0], p0.first, p0.second);
     std::memcpy(&addrs[p0.second], p1.first, p1.second);
     comm0.create_endpoints(addrs);
     comm1.create_endpoints(addrs);
+  }
+  void mem_map() {
+    auto r0 = comm0.rma_mem_map();
+    auto r1 = comm1.rma_mem_map();
+    ASSERT_EQ(r0.address_len, r1.address_len);
+    ASSERT_EQ(r0.address_len, sizeof(uint64_t));
+    ASSERT_EQ(r0.rkeybuf_len, r1.rkeybuf_len);
+    std::vector<char> rkeybuf(r0.rkeybuf_len + r1.rkeybuf_len);
+    std::memcpy(&rkeybuf[0], r0.rkeybuf, r0.rkeybuf_len);
+    std::memcpy(&rkeybuf[r0.rkeybuf_len], r1.rkeybuf, r1.rkeybuf_len);
+    std::vector<char> address(r0.address_len + r1.address_len);
+    std::memcpy(&address[0], r0.address, r0.address_len);
+    std::memcpy(&address[r0.address_len], r1.address, r1.address_len);
+    comm0.prepare_rma(&rkeybuf[0], rkeybuf.size(), &address[0], address.size());
+    comm1.prepare_rma(&rkeybuf[0], rkeybuf.size(), &address[0], address.size());
   }
 };
 
@@ -34,27 +50,12 @@ TEST_F(CommRMATest, HELLO) {
   recv_buf.resize(sizeof("WORLD"));
   std::strcpy(buf1.data(), "WORLD");
   bool finished = false;
+  fprintf(stderr, "buf0.data()=%p\n", buf0.data());
   unsigned id = comm0.add_rma_handler(buf0.data(), sizeof("HELLO"), &finished, recv_cb);
-  CHECK(id == 0);
-  CHECK(comm1.add_rma_handler(buf1.data(), sizeof("WORLD"), NULL, recv_cb) == id);
-  {
-    auto r0 = comm0.get_rkey_buf(id);
-    auto r1 = comm1.get_rkey_buf(id);
-    CHECK(r0.second == r1.second);
-    std::vector<char> rkey_buf(r0.second + r1.second);
-    std::memcpy(&rkey_buf[0], r0.first, r0.second);
-    std::memcpy(&rkey_buf[r0.second], r1.first, r1.second);
-    comm0.create_rkey(id, rkey_buf.data(), rkey_buf.size());
-    comm1.create_rkey(id, rkey_buf.data(), rkey_buf.size());
-    std::vector<char> address(sizeof(uint64_t) * 2);
-    uint64_t buf0_addr = (uint64_t)buf0.data();
-    uint64_t buf1_addr = (uint64_t)buf1.data();
-    std::memcpy(&address[0], &buf0_addr, sizeof(uint64_t));
-    std::memcpy(&address[sizeof(uint64_t)], &buf1_addr, sizeof(uint64_t));
-    comm0.set_buffer_addr(id, (intptr_t)&address[0], address.size());
-    comm1.set_buffer_addr(id, (intptr_t)&address[0], address.size());
-  }
-  
+  ASSERT_EQ(id, 0);
+  ASSERT_EQ(comm1.add_rma_handler(buf1.data(), sizeof("WORLD"), NULL, recv_cb), id);
+  create_ep();
+  mem_map();
   comm0.rma_read(1, id, 0, &recv_buf[0], 0, recv_buf.size());
   while (!finished) {
     comm0.progress();

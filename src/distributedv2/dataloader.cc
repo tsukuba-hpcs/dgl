@@ -396,7 +396,7 @@ NodeDataLoader::NodeDataLoader(Communicator *comm, node_dataloader_arg_t &&arg)
     .local_feats = std::move(arg.local_feats),
   };
   std::unique_ptr<FeatLoader> loader(new FeatLoader(std::move(arg1), &bridge_que, &output_que));
-  feat_ret = add_rma_service(std::move(loader));
+  add_rma_service(std::move(loader));
 }
 
 void NodeDataLoader::enqueue(seed_with_label_t &&item) {
@@ -450,24 +450,24 @@ DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2DequeueToNodeDataLoader")
   *rv = 0;
 });
 
-DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2GetFeatMetaData")
+DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2MapRMAService")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
   NodeDataLoaderRef loader = args[0];
+  rma_mem_ret_t meta = loader->map_rma_service();
   List<Value> ret;
-  ret.push_back(Value(MakeValue(static_cast<int>(loader->feat_ret.rma_id))));
-  ret.push_back(Value(MakeValue(loader->feat_ret.rkey_buf)));
-  ret.push_back(Value(MakeValue(static_cast<int>(loader->feat_ret.rkey_buf_len))));
-  ret.push_back(Value(MakeValue(loader->feat_ret.address)));
+  ret.push_back(Value(MakeValue(meta.rkeybuf)));
+  ret.push_back(Value(MakeValue(meta.rkeybuf_len)));
+  ret.push_back(Value(MakeValue(meta.address)));
+  ret.push_back(Value(MakeValue(meta.address_len)));
   *rv = ret;
 });
 
-DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2SetFeatMetaData")
+DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2PrepareRMAService")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
   NodeDataLoaderRef loader = args[0];
-  int rma_id = args[1];
-  std::string rkey_bufs = args[2];
-  std::string addrs = args[3];
-  loader->setup_rma_service(static_cast<unsigned>(rma_id), &rkey_bufs[0], rkey_bufs.size(), &addrs[0], addrs.size());
+  std::string rkeybufs = args[1];
+  std::string addrs = args[2];
+  loader->prepare_rma_service(&rkeybufs[0], rkeybufs.size(), &addrs[0], addrs.size());
 });
 
 DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2LaunchNodeDataLoader")

@@ -89,22 +89,12 @@ class NodeDataLoader(ObjectBase):
         return feats[l:r]
 
     def __gather_feat_metadata(self):
-        rma_id, rkey_buf, rkey_buf_len, addr = _CAPI_DistV2GetFeatMetaData(self)
+        rkeybuf, rkeybuf_len, addr, addr_len = _CAPI_DistV2MapRMAService(self)
         # gather rkey buffer
-        UByteArr = c_ubyte * rkey_buf_len
-        UByteArrPtr = POINTER(UByteArr)
-        rkey_buf = cast(rkey_buf, UByteArrPtr)
-        rkey_buf = bytearray(rkey_buf.contents)
-        s_msg = [rkey_buf, rkey_buf_len, MPI.BYTE]
-        rkey_bufs = bytearray(rkey_buf_len * self.comm.size)
-        r_msg = [rkey_bufs, rkey_buf_len, MPI.BYTE]
-        self.comm.mpi.Allgather(s_msg, r_msg)
+        rkeybufs = self.comm.allgather(rkeybuf, rkeybuf_len)
         # gather address
-        s_msg_addr = [addr, sizeof(addr), MPI.BYTE]
-        addrs = bytearray(sizeof(addr) * self.comm.size)
-        r_msg_addr = [addrs, sizeof(addr), MPI.BYTE]
-        self.comm.mpi.Allgather(s_msg_addr, r_msg_addr)
-        return rma_id, rkey_bufs, addrs
+        addrs = self.comm.allgather(addr, addr_len)
+        return rkeybufs, addrs
 
     def __del__(self):
         # stop DataLoader, then
@@ -144,8 +134,9 @@ class NodeDataLoader(ObjectBase):
             nd.from_dlpack(F.zerocopy_to_dlpack(F.zerocopy_from_numpy(src))),
             nd.from_dlpack(F.zerocopy_to_dlpack(F.zerocopy_from_numpy(dst)))
         )
-        rma_id, rkey_bufs, addrs = self.__gather_feat_metadata()
-        _CAPI_DistV2SetFeatMetaData(self, rma_id, rkey_bufs, addrs)
+        self.comm.create_endpoints()
+        rkeybufs, addrs = self.__gather_feat_metadata()
+        _CAPI_DistV2PrepareRMAService(self, rkeybufs, addrs)
         _CAPI_DistV2LaunchNodeDataLoader(self)
 
     def __enqueue(self):

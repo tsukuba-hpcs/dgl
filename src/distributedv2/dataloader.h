@@ -193,7 +193,6 @@ class NodeDataLoader: public ServiceManager, public runtime::Object {
   std::queue<seed_with_blocks_t> bridge_que;
   ConcurrentQueue<seed_with_feat_t> output_que;
 public:
-  rma_serv_ret_t feat_ret;
   static constexpr const char* _type_key = "distributedv2.NodeDataLoader";
   NodeDataLoader(Communicator *comm, node_dataloader_arg_t &&arg);
   void enqueue(seed_with_label_t &&item);

@@ -9,9 +9,10 @@ using namespace dgl::distributedv2;
 class CommAMTest : public ::testing::Test {
 protected:
   Communicator comm0, comm1;
-  CommAMTest() : comm0(0, 2, 100), comm1(1, 2, 100) {
-    auto p0 = comm0.get_workeraddr();
-    auto p1 = comm1.get_workeraddr();
+  CommAMTest() : comm0(0, 2, 100), comm1(1, 2, 100) {}
+  void create_ep() {
+    auto p0 = comm0.create_workers();
+    auto p1 = comm1.create_workers();
     std::string addrs(p0.second + p1.second, (char)0);
     std::memcpy(&addrs[0], p0.first, p0.second);
     std::memcpy(&addrs[p0.second], p1.first, p1.second);
@@ -44,6 +45,7 @@ TEST_F(CommAMTest, PING) {
   ASSERT_EQ(id, 0);
   id = comm1.add_am_handler(NULL, recv_cb);
   ASSERT_EQ(id, 0);
+  create_ep();
   std::unique_ptr<uint8_t[]> data = std::unique_ptr<uint8_t[]>(new uint8_t[sizeof("Hello, world")]);
   std::strcpy((char *)data.get(), "Hello, world");
   comm1.am_post(0, id, std::move(data), sizeof("Hello, world"));
@@ -64,6 +66,7 @@ TEST_F(CommAMTest, PING_MULTI) {
     .count = 0};
   comm0.add_am_handler(&ctx, recv_cb);
   comm1.add_am_handler(NULL, recv_cb);
+  create_ep();
   for (size_t idx = 0; idx < 100; idx++) {
     std::unique_ptr<uint8_t[]> data = std::unique_ptr<uint8_t[]>(new uint8_t[sizeof("Hello, world")]);
     std::strcpy((char *)data.get(), "Hello, world");
@@ -87,6 +90,7 @@ TEST_F(CommAMTest, REUSE_POOL) {
     .count = 0};
   comm0.add_am_handler(&ctx, recv_cb);
   comm1.add_am_handler(NULL, recv_cb);
+  create_ep();
   size_t req_cnt = 0;
   while (ctx.count < 100000) {
     comm0.progress();
@@ -111,6 +115,7 @@ TEST_F(CommAMTest, REUSE_POOL_2) {
     .count = 0};
   comm0.add_am_handler(&ctx, recv_cb);
   comm1.add_am_handler(NULL, recv_cb);
+  create_ep();
   size_t req_cnt = 0;
   while (ctx.count < 100000) {
     comm0.progress();

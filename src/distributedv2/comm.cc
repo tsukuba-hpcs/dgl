@@ -11,7 +11,8 @@ namespace distributedv2 {
 using namespace dgl::runtime;
 
 Communicator::Communicator(int rank, int size, size_t buffer_len)
-: rank(rank)
+: state(CommState::INIT)
+, rank(rank)
 , size(size)
 , am_pool(buffer_len)
 , rma_pool(buffer_len) {
@@ -24,6 +25,11 @@ Communicator::Communicator(int rank, int size, size_t buffer_len)
   if ((status = ucp_init(&params, NULL, &ucp_context)) != UCS_OK) {
     LOG(FATAL) << "ucp_init error: " << ucs_status_string(status);
   }
+}
+
+std::pair<ucp_address_t*, int> Communicator::create_workers() {
+  CHECK(state == CommState::INIT);
+  ucs_status_t status;
   ucp_worker_params_t wparams = {
     .field_mask = UCP_WORKER_PARAM_FIELD_THREAD_MODE,
     .thread_mode = UCS_THREAD_MODE_SERIALIZED,
@@ -35,13 +41,28 @@ Communicator::Communicator(int rank, int size, size_t buffer_len)
     LOG(FATAL) << "ucp_worker_get_address error: " << ucs_status_string(status);
   }
   ucp_worker_print_info(ucp_worker, stdout);
-}
+  state = CommState::WORKER_READY;
 
-std::pair<ucp_address_t*, int> Communicator::get_workeraddr() {
+  for (unsigned am_id = 0; am_id < am_handlers.size(); am_id++) {
+    ucp_am_handler_param_t param = {
+      .field_mask = UCP_AM_HANDLER_PARAM_FIELD_ID | UCP_AM_HANDLER_PARAM_FIELD_ARG | UCP_AM_HANDLER_PARAM_FIELD_CB,
+      .id = am_id,
+      .cb = recv_cb,
+      .arg = &am_handlers[am_id],
+    };
+    status = ucp_worker_set_am_recv_handler(ucp_worker, &param);
+    if (status != UCS_OK) {
+      LOG(FATAL) << "ucp_worker_set_am_recv_handler failed with "
+        << ucs_status_string(status);
+    }
+  }
+  chunks.assign(size, std::vector<iov_pool_item_t *>(am_handlers.size(), NULL));
+
   return std::make_pair(addr, static_cast<int>(addrlen));
 }
 
 void Communicator::create_endpoints(std::string addrs) {
+  CHECK(state == CommState::WORKER_READY);
   CHECK(addrs.length() == size * addrlen);
   ucs_status_t status;
   eps.resize(size);
@@ -60,14 +81,17 @@ void Communicator::create_endpoints(std::string addrs) {
     }
     ucp_ep_print_info(eps[cur], stdout);
   }
+  state = CommState::EP_READY;
+  if (rma_handlers.empty()) {
+    state = CommState::READY;
+  }
 }
 
 Communicator::~Communicator() {
+  CHECK(state == CommState::READY);
   ucs_status_t status;
   for (int rma_id = 0; rma_id < rma_handlers.size(); rma_id++) {
-    CHECK(rma_handlers[rma_id].rkey_buf != NULL);
-    CHECK(rma_handlers[rma_id].rkey[rank] == NULL);
-    ucp_rkey_buffer_release(rma_handlers[rma_id].rkey_buf);
+    ucp_rkey_buffer_release(rma_handlers[rma_id].rkeybuf);
     ucp_mem_attr_t attr = {
       .field_mask = UCP_MEM_ATTR_FIELD_ADDRESS | UCP_MEM_ATTR_FIELD_LENGTH,
     };
@@ -77,7 +101,7 @@ Communicator::~Communicator() {
     }
     for (int srcrank = 0; srcrank < size; srcrank++) {
       if (srcrank == rank) continue;
-      ucp_rkey_destroy(rma_handlers[rma_id].rkey[srcrank]);
+      ucp_rkey_destroy(rma_handlers[rma_id].rkeys[srcrank]);
     }
     status = ucp_mem_unmap(ucp_context, rma_handlers[rma_id].mem);
     if (status != UCS_OK) {
@@ -233,6 +257,7 @@ void Communicator::am_send(int rank, unsigned id, iov_pool_item_t *chunk) {
 }
 
 void Communicator::am_post(int destrank, unsigned id, std::unique_ptr<uint8_t[]> &&data, size_t length) {
+  CHECK(state == CommState::READY);
   if (chunks[destrank][id] == NULL) {
     CHECK(!am_pool.alloc(&chunks[destrank][id]));
   }
@@ -244,25 +269,15 @@ void Communicator::am_post(int destrank, unsigned id, std::unique_ptr<uint8_t[]>
 }
 
 unsigned Communicator::add_am_handler(void *arg, comm_am_cb_t cb) {
+  CHECK(state == CommState::INIT);
   ucs_status_t status;
   unsigned id = am_handlers.size();
   am_handlers.push_back(am_handler_t{.arg = arg, .cb = cb});
-  ucp_am_handler_param_t param = {
-    .field_mask = UCP_AM_HANDLER_PARAM_FIELD_ID | UCP_AM_HANDLER_PARAM_FIELD_ARG | UCP_AM_HANDLER_PARAM_FIELD_CB,
-    .id = id,
-    .cb = recv_cb,
-    .arg = &am_handlers.back(),
-  };
-  status = ucp_worker_set_am_recv_handler(ucp_worker, &param);
-  if (status != UCS_OK) {
-    LOG(FATAL) << "ucp_worker_set_am_recv_handler failed with "
-      << ucs_status_string(status);
-  }
-  chunks.assign(size, std::vector<iov_pool_item_t *>(am_handlers.size(), NULL));
   return id;
 }
 
 void Communicator::progress() {
+  CHECK(state == CommState::READY);
   for (int destrank = 0; destrank < size; destrank++) {
     if (destrank == rank) continue;
     for (unsigned id = 0; id < am_handlers.size(); id++) {
@@ -310,36 +325,61 @@ int RmaPool::alloc(rma_pool_item_t** item, size_t req_id, void *address, rma_han
 }
 
 unsigned Communicator::add_rma_handler(void *buffer, size_t length, void *arg, comm_rma_cb_t cb) {
-  ucs_status_t status;
-  ucp_mem_map_params_t params = {
-    .field_mask =
-      UCP_MEM_MAP_PARAM_FIELD_ADDRESS | UCP_MEM_MAP_PARAM_FIELD_LENGTH,
-    .address = buffer,
-    .length = length,
-  };
+  CHECK(state == CommState::INIT);
   unsigned rma_id = rma_handlers.size();
-  ucp_mem_h mem;
-  void *rkey_buf;
-  size_t rkey_buf_len;
-  status = ucp_mem_map(ucp_context, &params, &mem);
-  if (status != UCS_OK) {
-    LOG(FATAL) << "ucp_mem_map failed with "
-      << ucs_status_string(status);
-  }
-  status = ucp_rkey_pack(ucp_context, mem, &rkey_buf, &rkey_buf_len);
-  if (status != UCS_OK) {
-    LOG(FATAL) << "ucp_rkey_pack failed with "
-      << ucs_status_string(status);
-  }
-  rma_handlers.push_back(rma_handler_t(arg, cb, mem, rkey_buf, rkey_buf_len));
-  rma_handlers.back().rkey.resize(size);
-  rma_handlers.back().address.resize(size);
+  rma_handlers.push_back(rma_handler_t(arg, cb, buffer, length));
+  rma_handlers.back().rkeys.resize(size);
+  rma_handlers.back().addresses.resize(size);
   return rma_id;
 }
 
-std::pair<void*, size_t> Communicator::get_rkey_buf(unsigned rma_id) {
-  CHECK(rma_handlers.size() > rma_id);
-  return std::make_pair(rma_handlers[rma_id].rkey_buf, rma_handlers[rma_id].rkey_buf_len);
+rma_mem_ret_t Communicator::rma_mem_map() {
+  ucs_status_t status;
+  CHECK(state == CommState::EP_READY);
+  CHECK(rma_rkeybuf.empty());
+  CHECK(rma_address.empty());
+  int rkeybuf_len = 0;
+  int address_len = 0;
+  for (unsigned rma_id = 0; rma_id < rma_handlers.size(); rma_id++) {
+    ucp_mem_map_params_t params = {
+      .field_mask =
+        UCP_MEM_MAP_PARAM_FIELD_ADDRESS | UCP_MEM_MAP_PARAM_FIELD_LENGTH,
+      .address = rma_handlers[rma_id].address,
+      .length = rma_handlers[rma_id].buffer_len,
+    };
+    status = ucp_mem_map(ucp_context, &params, &rma_handlers[rma_id].mem);
+    if (status != UCS_OK) {
+      LOG(FATAL) << "ucp_mem_map failed with "
+        << ucs_status_string(status);
+    }
+    status = ucp_rkey_pack(ucp_context, rma_handlers[rma_id].mem,
+      &rma_handlers[rma_id].rkeybuf, &rma_handlers[rma_id].rkeybuf_len);
+    if (status != UCS_OK) {
+      LOG(FATAL) << "ucp_rkey_pack failed with "
+        << ucs_status_string(status);
+    }
+    rkeybuf_len += rma_handlers[rma_id].rkeybuf_len;
+    address_len += sizeof(rma_handlers[rma_id].address);
+  }
+  rma_rkeybuf.resize(rkeybuf_len);
+  rma_address.resize(address_len);
+  int rkeybuf_offset = 0;
+  int address_offset = 0;
+  for (unsigned rma_id = 0; rma_id < rma_handlers.size(); rma_id++) {
+    std::memcpy(&rma_rkeybuf[rkeybuf_offset], rma_handlers[rma_id].rkeybuf, rma_handlers[rma_id].rkeybuf_len);
+    rkeybuf_offset += rma_handlers[rma_id].rkeybuf_len;
+    std::memcpy(&rma_address[address_offset], &rma_handlers[rma_id].address, sizeof(rma_handlers[rma_id].address));
+    address_offset += sizeof(rma_handlers[rma_id].address);
+  }
+  CHECK(rkeybuf_offset == rkeybuf_len);
+  CHECK(address_offset == address_len);
+  state = CommState::MEM_MAPPED;
+  return rma_mem_ret_t{
+    .rkeybuf = &rma_rkeybuf[0],
+    .rkeybuf_len = rkeybuf_len,
+    .address = &rma_address[0],
+    .address_len = address_len
+  };
 }
 
 void Communicator::read_cb(void *request, ucs_status_t status, void *user_data) {
@@ -354,6 +394,7 @@ void Communicator::read_cb(void *request, ucs_status_t status, void *user_data) 
 }
 
 void Communicator::rma_read(int destrank, unsigned rma_id, uint64_t req_id, void *buffer, uint64_t offset, size_t length) {
+  CHECK(state == CommState::READY);
   ucs_status_ptr_t status;
   rma_pool_item_t *item;
   rma_handler_t *handler = &rma_handlers[rma_id];
@@ -365,7 +406,7 @@ void Communicator::rma_read(int destrank, unsigned rma_id, uint64_t req_id, void
     },
     .user_data = item,
   };
-  status = ucp_get_nbx(eps[destrank], buffer, length, handler->address[destrank] + offset, handler->rkey[destrank], &params);
+  status = ucp_get_nbx(eps[destrank], buffer, length, handler->addresses[destrank] + offset, handler->rkeys[destrank], &params);
   if (status == NULL) {
     handler->cb(handler->arg, req_id, buffer);
     item->release();
@@ -379,39 +420,36 @@ void Communicator::rma_read(int destrank, unsigned rma_id, uint64_t req_id, void
   return;
 }
 
-
-void Communicator::set_buffer_addr(unsigned rma_id, const intptr_t buffer, size_t length) {
-  CHECK(rma_handlers.size() > rma_id);
-  CHECK(length == sizeof(uint64_t) * size);
-  rma_handler_t *handler = &rma_handlers[rma_id];
-  CHECK(handler->address.size() == size);
-  for (int srcrank = 0; srcrank < size; srcrank++) {
-    if (srcrank == rank) {
-      handler->address[srcrank] = NULL;
-    } else {
-      std::memcpy(&handler->address[srcrank],
-        UCS_PTR_BYTE_OFFSET(buffer, sizeof(uint64_t) * srcrank),
-        sizeof(uint64_t));
-    }
-  }
-}
-
-void Communicator::create_rkey(unsigned rma_id, const void *buffer, size_t length) {
-  CHECK(rma_handlers.size() > rma_id);
-  rma_handler_t *handler = &rma_handlers[rma_id];
-  CHECK(handler->rkey_buf_len * size == length);
-  CHECK(handler->rkey.size() == size);
+void Communicator::prepare_rma(void *rkeybuf, size_t rkeybuf_len, void *address, size_t address_len) {
+  CHECK(rma_rkeybuf.size() * size == rkeybuf_len);
+  CHECK(rma_address.size() * size == address_len);
+  CHECK(state == CommState::MEM_MAPPED);
   ucs_status_t status;
-  for (int srcrank = 0; srcrank < size; srcrank++) {
-    if (srcrank == rank) continue;
-    status = ucp_ep_rkey_unpack(eps[srcrank],
-      UCS_PTR_BYTE_OFFSET(buffer, handler->rkey_buf_len * srcrank),
-      &handler->rkey[srcrank]);
-    if (status != UCS_OK) {
-      LOG(FATAL) << "ucp_ep_rkey_unpack failed with "
-      << ucs_status_string(status);
+  size_t rkeybuf_offset = 0;
+  size_t address_offset = 0;
+  for (unsigned rma_id = 0; rma_id < rma_handlers.size(); rma_id++) {
+    for (int srcrank = 0; srcrank < size; srcrank++) {
+      if (srcrank == rank) {
+        continue;
+      }
+      status = ucp_ep_rkey_unpack(
+        eps[srcrank],
+        UCS_PTR_BYTE_OFFSET(rkeybuf, rma_address.size() * srcrank + rkeybuf_offset),
+        &rma_handlers[rma_id].rkeys[srcrank]);
+      if (status != UCS_OK) {
+        LOG(FATAL) << "ucp_ep_rkey_unpack failed with "
+        << ucs_status_string(status);
+      }
+      std::memcpy(
+        &rma_handlers[rma_id].addresses[srcrank],
+        UCS_PTR_BYTE_OFFSET(address, rma_address.size() * srcrank + address_offset),
+        sizeof(rma_handlers[rma_id].address)
+      );
     }
+    rkeybuf_offset += rma_handlers[rma_id].rkeybuf_len;
+    address_offset += sizeof(rma_handlers[rma_id].address);
   }
+  state = CommState::READY;
 }
 
 
@@ -425,11 +463,11 @@ DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2CreateCommunicator")
   *rv = ctx;
 });
 
-DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2GetWorkerAddr")
+DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2CreateWorker")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
   CommunicatorRef comm = args[0];
   List<Value> ret;
-  auto p = comm->get_workeraddr();
+  auto p = comm->create_workers();
   ret.push_back(Value(MakeValue(p.first)));
   ret.push_back(Value(MakeValue(p.second)));
   *rv = ret;
