@@ -51,11 +51,17 @@ public:
 struct am_handler_t {
   void *arg;
   comm_am_cb_t cb;
+  ucp_worker_h worker;
+  size_t worker_addr_len;
+  std::vector<ucp_ep_h> eps;
 };
 
 struct rma_handler_t {
   void *arg;
   comm_rma_cb_t cb;
+  ucp_worker_h worker;
+  size_t worker_addr_len;
+  std::vector<ucp_ep_h> eps;
   ucp_mem_h mem;
   void *address;
   size_t buffer_len;
@@ -101,12 +107,9 @@ struct rma_mem_ret_t {
 
 class Communicator: public runtime::Object {
   CommState state;
-  ucp_context_h ucp_context;
-  ucp_worker_h ucp_worker;
-  ucp_address_t* addr;
-  size_t addrlen;
-  std::vector<ucp_ep_h> eps;
+  std::vector<uint8_t> worker_addrs;
   // for Active Message
+  ucp_context_h am_context;
   IovPool am_pool;
   std::vector<am_handler_t> am_handlers;
   std::vector<std::vector<iov_pool_item_t*>> chunks;
@@ -119,6 +122,7 @@ class Communicator: public runtime::Object {
   static void send_cb(void *request, ucs_status_t status, void *user_data);
   void am_send(int rank, unsigned id, iov_pool_item_t *chunk);
   // for Remote Memory Access
+  ucp_context_h rma_context;
   RmaPool rma_pool;
   std::vector<rma_handler_t> rma_handlers;
   std::vector<uint8_t> rma_rkeybuf;
@@ -130,7 +134,7 @@ public:
   Communicator(int rank, int size, size_t buffer_len = (1<<22));
   ~Communicator();
   // for Endpoints
-  std::pair<ucp_address_t*, int> create_workers();
+  std::pair<void*, int> create_workers();
   void create_endpoints(void *addrs, size_t length);
   // for Active Message
   unsigned add_am_handler(void *arg, comm_am_cb_t cb);

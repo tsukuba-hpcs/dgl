@@ -17,70 +17,129 @@ Communicator::Communicator(int rank, int size, size_t buffer_len)
 , am_pool(buffer_len)
 , rma_pool(buffer_len) {
   ucs_status_t status;
-  ucp_params_t params = {
+  ucp_params_t am_params = {
     .field_mask = UCP_PARAM_FIELD_FEATURES | UCP_PARAM_FIELD_ESTIMATED_NUM_EPS,
-    .features = UCP_FEATURE_AM | UCP_FEATURE_RMA,
+    .features = UCP_FEATURE_AM,
     .estimated_num_eps = static_cast<size_t>(size),
   };
-  if ((status = ucp_init(&params, NULL, &ucp_context)) != UCS_OK) {
-    LOG(FATAL) << "ucp_init error: " << ucs_status_string(status);
+  ucp_config_t *config;
+  ucp_config_read(NULL, NULL, &config);
+  ucp_config_print(config, stdout, "context config:", UCS_CONFIG_PRINT_CONFIG);
+  ucp_config_release(config);
+  if ((status = ucp_init(&am_params, NULL, &am_context)) != UCS_OK) {
+    LOG(FATAL) << "ucp_init am_context error: " << ucs_status_string(status);
+  }
+  ucp_params_t rma_params = {
+    .field_mask = UCP_PARAM_FIELD_FEATURES | UCP_PARAM_FIELD_ESTIMATED_NUM_EPS,
+    .features = UCP_FEATURE_RMA,
+    .estimated_num_eps = static_cast<size_t>(size),
+  };
+  if ((status = ucp_init(&rma_params, NULL, &rma_context)) != UCS_OK) {
+    LOG(FATAL) << "ucp_init rma_context error: " << ucs_status_string(status);
   }
 }
 
-std::pair<ucp_address_t*, int> Communicator::create_workers() {
+std::pair<void *, int> Communicator::create_workers() {
   CHECK(state == CommState::INIT);
   ucs_status_t status;
-  ucp_worker_params_t wparams = {
-    .field_mask = UCP_WORKER_PARAM_FIELD_THREAD_MODE,
-    .thread_mode = UCS_THREAD_MODE_SERIALIZED,
-  };
-  if ((status = ucp_worker_create(ucp_context, &wparams, &ucp_worker)) != UCS_OK) {
-    LOG(FATAL) << "ucp_worker_create error: " << ucs_status_string(status);
-  }
-  if ((status = ucp_worker_get_address(ucp_worker, &addr, &addrlen)) != UCS_OK) {
-    LOG(FATAL) << "ucp_worker_get_address error: " << ucs_status_string(status);
-  }
-  ucp_worker_print_info(ucp_worker, stdout);
-  state = CommState::WORKER_READY;
-
+  ucp_address_t *address;
+  CHECK(worker_addrs.empty());
+  // For Active Message
   for (unsigned am_id = 0; am_id < am_handlers.size(); am_id++) {
+    ucp_worker_params_t params = {
+      .field_mask = UCP_WORKER_PARAM_FIELD_THREAD_MODE,
+      .thread_mode = UCS_THREAD_MODE_SERIALIZED,
+    };
+    if ((status = ucp_worker_create(am_context, &params, &am_handlers[am_id].worker)) != UCS_OK) {
+      LOG(FATAL) << "ucp_worker_create error: " << ucs_status_string(status);
+    }
+    if ((status = ucp_worker_get_address(am_handlers[am_id].worker, &address,
+      &am_handlers[am_id].worker_addr_len)) != UCS_OK) {
+      LOG(FATAL) << "ucp_worker_get_address error: " << ucs_status_string(status);
+    }
+    std::vector<uint8_t> addr((uint8_t *)address, (uint8_t *)address + am_handlers[am_id].worker_addr_len);
+    worker_addrs.insert(worker_addrs.end(), addr.begin(), addr.end());
+    ucp_worker_release_address(am_handlers[am_id].worker, address);
     ucp_am_handler_param_t param = {
       .field_mask = UCP_AM_HANDLER_PARAM_FIELD_ID | UCP_AM_HANDLER_PARAM_FIELD_ARG | UCP_AM_HANDLER_PARAM_FIELD_CB,
       .id = am_id,
       .cb = recv_cb,
       .arg = &am_handlers[am_id],
     };
-    status = ucp_worker_set_am_recv_handler(ucp_worker, &param);
+    status = ucp_worker_set_am_recv_handler(am_handlers[am_id].worker, &param);
     if (status != UCS_OK) {
       LOG(FATAL) << "ucp_worker_set_am_recv_handler failed with "
         << ucs_status_string(status);
     }
   }
   chunks.assign(size, std::vector<iov_pool_item_t *>(am_handlers.size(), NULL));
-
-  return std::make_pair(addr, static_cast<int>(addrlen));
+  // For Remote Memory Access
+  for (unsigned rma_id = 0; rma_id < rma_handlers.size(); rma_id++) {
+    ucp_worker_params_t params = {
+      .field_mask = UCP_WORKER_PARAM_FIELD_THREAD_MODE,
+      .thread_mode = UCS_THREAD_MODE_SERIALIZED,
+    };
+    if ((status = ucp_worker_create(rma_context, &params, &rma_handlers[rma_id].worker)) != UCS_OK) {
+      LOG(FATAL) << "ucp_worker_create error: " << ucs_status_string(status);
+    }
+    if ((status = ucp_worker_get_address(rma_handlers[rma_id].worker, &address,
+      &rma_handlers[rma_id].worker_addr_len)) != UCS_OK) {
+      LOG(FATAL) << "ucp_worker_get_address error: " << ucs_status_string(status);
+    }
+    std::vector<uint8_t> addr((uint8_t *)address, (uint8_t *)address + rma_handlers[rma_id].worker_addr_len);
+    worker_addrs.insert(worker_addrs.end(), addr.begin(), addr.end());
+    ucp_worker_release_address(rma_handlers[rma_id].worker, address);
+  }
+  state = CommState::WORKER_READY;
+  return std::make_pair(&worker_addrs[0], static_cast<int>(worker_addrs.size()));
 }
 
 void Communicator::create_endpoints(void *addrs, size_t length) {
   CHECK(state == CommState::WORKER_READY);
-  CHECK(length == size * addrlen);
+  CHECK(length == size * worker_addrs.size());
   ucs_status_t status;
-  eps.resize(size);
-  for (int cur = 0; cur != size; cur++) {
-    if (cur == rank) continue;
-    const ucp_address_t* addr =
-      reinterpret_cast<const ucp_address_t *>(UCS_PTR_BYTE_OFFSET(addrs, addrlen * cur));
-    ucp_ep_params_t params = {
-      .field_mask = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS | UCP_EP_PARAM_FIELD_ERR_HANDLING_MODE,
-      .address = addr,
-      .err_mode = UCP_ERR_HANDLING_MODE_PEER,
-    };
-    if ((status = ucp_ep_create(ucp_worker, &params, &eps[cur])) != UCS_OK) {
-      LOG(FATAL) << "rank=" << rank
-        <<"ucp_worker_get_address error: " << ucs_status_string(status);
+  size_t worker_addr_offset = 0;
+  // For Active Message
+  for (unsigned am_id = 0; am_id < am_handlers.size(); am_id++) {
+    am_handlers[am_id].eps.resize(size);
+    for (int srcrank = 0; srcrank < size; srcrank++) {
+      if (srcrank == rank) continue;
+      ucp_address_t *addr = (ucp_address_t *)UCS_PTR_BYTE_OFFSET(addrs,
+        srcrank * worker_addrs.size() + worker_addr_offset);
+      ucp_ep_params_t params = {
+        .field_mask = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS | UCP_EP_PARAM_FIELD_ERR_HANDLING_MODE,
+        .address = addr,
+        .err_mode = UCP_ERR_HANDLING_MODE_PEER,
+      };
+      if ((status = ucp_ep_create(am_handlers[am_id].worker, &params, &am_handlers[am_id].eps[srcrank])) != UCS_OK) {
+        LOG(FATAL) << "rank=" << rank
+          << "ucp_worker_get_address error: " << ucs_status_string(status);
+      }
+      ucp_ep_print_info(am_handlers[am_id].eps[srcrank], stdout);
     }
-    ucp_ep_print_info(eps[cur], stdout);
+    worker_addr_offset += am_handlers[am_id].worker_addr_len;
   }
+  // For Remote Memory Access
+  for (unsigned rma_id = 0; rma_id < rma_handlers.size(); rma_id++) {
+    rma_handlers[rma_id].eps.resize(size);
+    for (int srcrank = 0; srcrank < size; srcrank++) {
+      if (srcrank == rank) continue;
+      ucp_address_t *addr = (ucp_address_t *)UCS_PTR_BYTE_OFFSET(addrs,
+        srcrank * worker_addrs.size() + worker_addr_offset);
+      ucp_ep_params_t params = {
+        .field_mask = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS | UCP_EP_PARAM_FIELD_ERR_HANDLING_MODE,
+        .address = addr,
+        .err_mode = UCP_ERR_HANDLING_MODE_PEER,
+      };
+      if ((status = ucp_ep_create(rma_handlers[rma_id].worker, &params, &rma_handlers[rma_id].eps[srcrank])) != UCS_OK) {
+        LOG(FATAL) << "rank=" << rank
+          << "ucp_worker_get_address error: " << ucs_status_string(status);
+      }
+      ucp_ep_print_info(rma_handlers[rma_id].eps[srcrank], stdout);
+    }
+    worker_addr_offset += rma_handlers[rma_id].worker_addr_len;
+  }
+
   state = CommState::EP_READY;
   if (rma_handlers.empty()) {
     state = CommState::READY;
@@ -90,7 +149,39 @@ void Communicator::create_endpoints(void *addrs, size_t length) {
 Communicator::~Communicator() {
   CHECK(state == CommState::READY);
   ucs_status_t status;
-  for (int rma_id = 0; rma_id < rma_handlers.size(); rma_id++) {
+  ucs_status_ptr_t req;
+  ucp_request_param_t params = {
+    .op_attr_mask = UCP_OP_ATTR_FIELD_FLAGS,
+    .flags = UCP_EP_CLOSE_MODE_FLUSH,
+  };
+  // For Active Message
+  for (unsigned am_id = 0; am_id < am_handlers.size(); am_id++) {
+    for (int srcrank = 0; srcrank < size; srcrank++) {
+      if (srcrank == rank) continue;
+      req = ucp_ep_close_nbx(am_handlers[am_id].eps[srcrank], &params);
+      if (req != NULL) {
+        if (UCS_PTR_IS_ERR(req)) {
+          LOG(FATAL) << "ucp_ep_close_nbx failed with"
+            << ucs_status_string(UCS_PTR_STATUS(req));
+        }
+        status = ucp_request_check_status(req);
+        if (status == UCS_INPROGRESS) {
+          do {
+            ucp_worker_progress(am_handlers[am_id].worker);
+            status = UCS_PTR_STATUS(req);
+          } while (status == UCS_INPROGRESS && req != NULL);
+          if (status != UCS_OK) {
+            LOG(FATAL) << "ucp_ep_close_nbx failed with"
+              << ucs_status_string(status);
+          }
+        }
+      }
+    }
+    ucp_worker_destroy(am_handlers[am_id].worker);
+  }
+  ucp_cleanup(am_context);
+  // For Remote Memory Access
+  for (unsigned rma_id = 0; rma_id < rma_handlers.size(); rma_id++) {
     ucp_rkey_buffer_release(rma_handlers[rma_id].rkeybuf);
     ucp_mem_attr_t attr = {
       .field_mask = UCP_MEM_ATTR_FIELD_ADDRESS | UCP_MEM_ATTR_FIELD_LENGTH,
@@ -101,41 +192,33 @@ Communicator::~Communicator() {
     }
     for (int srcrank = 0; srcrank < size; srcrank++) {
       if (srcrank == rank) continue;
+      req = ucp_ep_close_nbx(rma_handlers[rma_id].eps[srcrank], &params);
+      if (req != NULL) {
+        if (UCS_PTR_IS_ERR(req)) {
+          LOG(FATAL) << "ucp_ep_close_nbx failed with"
+            << ucs_status_string(UCS_PTR_STATUS(req));
+        }
+        status = ucp_request_check_status(req);
+        if (status == UCS_INPROGRESS) {
+          do {
+            ucp_worker_progress(rma_handlers[rma_id].worker);
+            status = UCS_PTR_STATUS(req);
+          } while (status == UCS_INPROGRESS && req != NULL);
+          if (status != UCS_OK) {
+            LOG(FATAL) << "ucp_ep_close_nbx failed with"
+              << ucs_status_string(status);
+          }
+        }
+      }
       ucp_rkey_destroy(rma_handlers[rma_id].rkeys[srcrank]);
     }
-    status = ucp_mem_unmap(ucp_context, rma_handlers[rma_id].mem);
+    status = ucp_mem_unmap(rma_context, rma_handlers[rma_id].mem);
     if (status != UCS_OK) {
       LOG(FATAL) << "ucp_mem_unmap failed with " << ucs_status_string(status);
     }
+    ucp_worker_destroy(rma_handlers[rma_id].worker);
   }
-  ucs_status_ptr_t req;
-  ucp_request_param_t params = {
-    .op_attr_mask = UCP_OP_ATTR_FIELD_FLAGS,
-    .flags = UCP_EP_CLOSE_MODE_FLUSH,
-  };
-  for (int cur = 0; cur < size; cur++) {
-    if (cur == rank) continue;
-    req = ucp_ep_close_nbx(eps[cur], &params);
-    if (req == NULL) continue;
-    if (req != NULL && UCS_PTR_IS_ERR(req)) {
-      LOG(FATAL) << "ucp_ep_close_nbx failed with"
-        << ucs_status_string(UCS_PTR_STATUS(req));
-    }
-    status = ucp_request_check_status(req);
-    if (status == UCS_INPROGRESS) {
-      do {
-        ucp_worker_progress(ucp_worker);
-        status = UCS_PTR_STATUS(req);
-      } while (status == UCS_INPROGRESS && req != NULL);
-      if (status != UCS_OK) {
-        LOG(FATAL) << "ucp_ep_close_nbx failed with"
-          << ucs_status_string(status);
-      }
-    }
-  }
-  ucp_worker_release_address(ucp_worker, addr);
-  ucp_worker_destroy(ucp_worker);
-  ucp_cleanup(ucp_context);
+  ucp_cleanup(rma_context);
 }
 
 iov_pool_item_t::iov_pool_item_t()
@@ -231,7 +314,7 @@ void Communicator::send_cb(void *request, ucs_status_t status, void *user_data) 
   ucp_request_free(request);
 }
 
-void Communicator::am_send(int rank, unsigned am_id, iov_pool_item_t *chunk) {
+void Communicator::am_send(int destrank, unsigned am_id, iov_pool_item_t *chunk) {
   ucp_request_param_t params = {
     .op_attr_mask = UCP_OP_ATTR_FIELD_DATATYPE | UCP_OP_ATTR_FIELD_CALLBACK | UCP_OP_ATTR_FIELD_FLAGS | UCP_OP_ATTR_FIELD_USER_DATA,
     .flags = UCP_AM_SEND_FLAG_EAGER,
@@ -244,7 +327,7 @@ void Communicator::am_send(int rank, unsigned am_id, iov_pool_item_t *chunk) {
   ucs_status_ptr_t status;
   size_t header_length;
   header_length = chunk->fill_header();
-  status = ucp_am_send_nbx(eps[rank], am_id,
+  status = ucp_am_send_nbx(am_handlers[am_id].eps[destrank], am_id,
     chunk->header, header_length, chunk->iov, chunk->iov_cnt, &params);
   if (status == NULL) {
     chunk->release();
@@ -278,16 +361,18 @@ unsigned Communicator::add_am_handler(void *arg, comm_am_cb_t cb) {
 
 void Communicator::progress() {
   CHECK(state == CommState::READY);
-  for (int destrank = 0; destrank < size; destrank++) {
-    if (destrank == rank) continue;
-    for (unsigned am_id = 0; am_id < am_handlers.size(); am_id++) {
+  for (unsigned am_id = 0; am_id < am_handlers.size(); am_id++) {
+    for (int destrank = 0; destrank < size; destrank++) {
       if (chunks[destrank][am_id] == NULL) continue;
       if (chunks[destrank][am_id]->empty()) continue;
       am_send(destrank, am_id, chunks[destrank][am_id]);
       chunks[destrank][am_id] = NULL;
     }
+    ucp_worker_progress(am_handlers[am_id].worker);
   }
-  ucp_worker_progress(ucp_worker);
+  for (unsigned rma_id = 0; rma_id < rma_handlers.size(); rma_id++) {
+    ucp_worker_progress(rma_handlers[rma_id].worker);
+  }
 }
 
 rma_pool_item_t::rma_pool_item_t(rma_handler_t *handler = NULL)
@@ -347,12 +432,12 @@ rma_mem_ret_t Communicator::rma_mem_map() {
       .address = rma_handlers[rma_id].address,
       .length = rma_handlers[rma_id].buffer_len,
     };
-    status = ucp_mem_map(ucp_context, &params, &rma_handlers[rma_id].mem);
+    status = ucp_mem_map(rma_context, &params, &rma_handlers[rma_id].mem);
     if (status != UCS_OK) {
       LOG(FATAL) << "ucp_mem_map failed with "
         << ucs_status_string(status);
     }
-    status = ucp_rkey_pack(ucp_context, rma_handlers[rma_id].mem,
+    status = ucp_rkey_pack(rma_context, rma_handlers[rma_id].mem,
       &rma_handlers[rma_id].rkeybuf, &rma_handlers[rma_id].rkeybuf_len);
     if (status != UCS_OK) {
       LOG(FATAL) << "ucp_rkey_pack failed with "
@@ -406,7 +491,7 @@ void Communicator::rma_read(int destrank, unsigned rma_id, uint64_t req_id, void
     },
     .user_data = item,
   };
-  status = ucp_get_nbx(eps[destrank], buffer, length, handler->addresses[destrank] + offset, handler->rkeys[destrank], &params);
+  status = ucp_get_nbx(rma_handlers[rma_id].eps[destrank], buffer, length, handler->addresses[destrank] + offset, handler->rkeys[destrank], &params);
   if (status == NULL) {
     handler->cb(handler->arg, req_id, buffer);
     item->release();
@@ -433,7 +518,7 @@ void Communicator::prepare_rma(void *rkeybuf, size_t rkeybuf_len, void *address,
         continue;
       }
       status = ucp_ep_rkey_unpack(
-        eps[srcrank],
+        rma_handlers[rma_id].eps[srcrank],
         UCS_PTR_BYTE_OFFSET(rkeybuf, rma_address.size() * srcrank + rkeybuf_offset),
         &rma_handlers[rma_id].rkeys[srcrank]);
       if (status != UCS_OK) {
