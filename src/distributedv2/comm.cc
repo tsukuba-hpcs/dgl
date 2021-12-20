@@ -231,7 +231,7 @@ void Communicator::send_cb(void *request, ucs_status_t status, void *user_data) 
   ucp_request_free(request);
 }
 
-void Communicator::am_send(int rank, unsigned id, iov_pool_item_t *chunk) {
+void Communicator::am_send(int rank, unsigned am_id, iov_pool_item_t *chunk) {
   ucp_request_param_t params = {
     .op_attr_mask = UCP_OP_ATTR_FIELD_DATATYPE | UCP_OP_ATTR_FIELD_CALLBACK | UCP_OP_ATTR_FIELD_FLAGS | UCP_OP_ATTR_FIELD_USER_DATA,
     .flags = UCP_AM_SEND_FLAG_EAGER,
@@ -244,7 +244,7 @@ void Communicator::am_send(int rank, unsigned id, iov_pool_item_t *chunk) {
   ucs_status_ptr_t status;
   size_t header_length;
   header_length = chunk->fill_header();
-  status = ucp_am_send_nbx(eps[rank], id,
+  status = ucp_am_send_nbx(eps[rank], am_id,
     chunk->header, header_length, chunk->iov, chunk->iov_cnt, &params);
   if (status == NULL) {
     chunk->release();
@@ -256,35 +256,35 @@ void Communicator::am_send(int rank, unsigned id, iov_pool_item_t *chunk) {
   }
 }
 
-void Communicator::am_post(int destrank, unsigned id, std::unique_ptr<uint8_t[]> &&data, size_t length) {
+void Communicator::am_post(int destrank, unsigned am_id, std::unique_ptr<uint8_t[]> &&data, size_t length) {
   CHECK(state == CommState::READY);
-  if (chunks[destrank][id] == NULL) {
-    CHECK(!am_pool.alloc(&chunks[destrank][id]));
+  if (chunks[destrank][am_id] == NULL) {
+    CHECK(!am_pool.alloc(&chunks[destrank][am_id]));
   }
-  chunks[destrank][id]->append(std::move(data), length);
-  if (chunks[destrank][id]->filled()) {
-    am_send(destrank, id, chunks[destrank][id]);
-    chunks[destrank][id] = NULL;
+  chunks[destrank][am_id]->append(std::move(data), length);
+  if (chunks[destrank][am_id]->filled()) {
+    am_send(destrank, am_id, chunks[destrank][am_id]);
+    chunks[destrank][am_id] = NULL;
   }
 }
 
 unsigned Communicator::add_am_handler(void *arg, comm_am_cb_t cb) {
   CHECK(state == CommState::INIT);
   ucs_status_t status;
-  unsigned id = am_handlers.size();
+  unsigned am_id = am_handlers.size();
   am_handlers.push_back(am_handler_t{.arg = arg, .cb = cb});
-  return id;
+  return am_id;
 }
 
 void Communicator::progress() {
   CHECK(state == CommState::READY);
   for (int destrank = 0; destrank < size; destrank++) {
     if (destrank == rank) continue;
-    for (unsigned id = 0; id < am_handlers.size(); id++) {
-      if (chunks[destrank][id] == NULL) continue;
-      if (chunks[destrank][id]->empty()) continue;
-      am_send(destrank, id, chunks[destrank][id]);
-      chunks[destrank][id] = NULL;
+    for (unsigned am_id = 0; am_id < am_handlers.size(); am_id++) {
+      if (chunks[destrank][am_id] == NULL) continue;
+      if (chunks[destrank][am_id]->empty()) continue;
+      am_send(destrank, am_id, chunks[destrank][am_id]);
+      chunks[destrank][am_id] = NULL;
     }
   }
   ucp_worker_progress(ucp_worker);
