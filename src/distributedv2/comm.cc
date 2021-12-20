@@ -519,7 +519,7 @@ void Communicator::prepare_rma(void *rkeybuf, size_t rkeybuf_len, void *address,
       }
       status = ucp_ep_rkey_unpack(
         rma_handlers[rma_id].eps[srcrank],
-        UCS_PTR_BYTE_OFFSET(rkeybuf, rma_address.size() * srcrank + rkeybuf_offset),
+        UCS_PTR_BYTE_OFFSET(rkeybuf, rma_rkeybuf.size() * srcrank + rkeybuf_offset),
         &rma_handlers[rma_id].rkeys[srcrank]);
       if (status != UCS_OK) {
         LOG(FATAL) << "ucp_ep_rkey_unpack failed with "
