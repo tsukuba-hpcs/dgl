@@ -61,15 +61,15 @@ std::pair<ucp_address_t*, int> Communicator::create_workers() {
   return std::make_pair(addr, static_cast<int>(addrlen));
 }
 
-void Communicator::create_endpoints(std::string addrs) {
+void Communicator::create_endpoints(void *addrs, size_t length) {
   CHECK(state == CommState::WORKER_READY);
-  CHECK(addrs.length() == size * addrlen);
+  CHECK(length == size * addrlen);
   ucs_status_t status;
   eps.resize(size);
   for (int cur = 0; cur != size; cur++) {
     if (cur == rank) continue;
     const ucp_address_t* addr =
-      reinterpret_cast<const ucp_address_t *>(&addrs[addrlen * cur]);
+      reinterpret_cast<const ucp_address_t *>(UCS_PTR_BYTE_OFFSET(addrs, addrlen * cur));
     ucp_ep_params_t params = {
       .field_mask = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS | UCP_EP_PARAM_FIELD_ERR_HANDLING_MODE,
       .address = addr,
@@ -477,7 +477,7 @@ DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2CreateEndpoints")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
   CommunicatorRef comm = args[0];
   std::string addrs = args[1];
-  comm->create_endpoints(addrs);
+  comm->create_endpoints(&addrs[0], addrs.size());
 });
 
 

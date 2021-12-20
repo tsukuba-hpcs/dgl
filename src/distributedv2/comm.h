@@ -131,7 +131,7 @@ public:
   ~Communicator();
   // for Endpoints
   std::pair<ucp_address_t*, int> create_workers();
-  void create_endpoints(std::string addrs);
+  void create_endpoints(void *addrs, size_t length);
   // for Active Message
   unsigned add_am_handler(void *arg, comm_am_cb_t cb);
   void am_post(int destrank, unsigned am_id, std::unique_ptr<uint8_t[]> &&data, size_t length);

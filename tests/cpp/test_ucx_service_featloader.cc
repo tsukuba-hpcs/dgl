@@ -23,11 +23,11 @@ protected:
   void create_ep() {
     auto p0 = comm0.create_workers();
     auto p1 = comm1.create_workers();
-    std::string addrs(p0.second + p1.second, (char)0);
+    std::vector<char> addrs(p0.second + p1.second);
     std::memcpy(&addrs[0], p0.first, p0.second);
     std::memcpy(&addrs[p0.second], p1.first, p1.second);
-    comm0.create_endpoints(addrs);
-    comm1.create_endpoints(addrs);
+    comm0.create_endpoints(&addrs[0], addrs.size());
+    comm1.create_endpoints(&addrs[0], addrs.size());
   }
   void mem_map() {
     auto r0 = comm0.rma_mem_map();
