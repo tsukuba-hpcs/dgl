@@ -121,8 +121,8 @@ class Communicator: public runtime::Object {
   // for Remote Memory Access
   RmaPool rma_pool;
   std::vector<rma_handler_t> rma_handlers;
-  std::string rma_rkeybuf;
-  std::string rma_address;
+  std::vector<uint8_t> rma_rkeybuf;
+  std::vector<uint8_t> rma_address;
   static void read_cb(void *request, ucs_status_t status, void *user_data);
 public:
   const int rank;
