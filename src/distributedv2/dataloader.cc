@@ -131,9 +131,6 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
     }
     if (l == r) continue;
     // LOG(INFO) << "scatter depth=" << depth <<  " rank=" << rank << " dstrank=" << dstrank << "req_id" << req_id;
-    for (uint32_t i = l; i < r; i++) {
-      // LOG(INFO) << "i=" << i << " seeds[i]=" << seeds[i];
-    }
     // Relay the query
     if (dstrank != rank) {
       uint64_t cur_ppt = (r == seeds.size()) ? rem_ppt : ppt * (r-l) / seeds.size();
