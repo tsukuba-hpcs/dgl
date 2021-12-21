@@ -93,9 +93,9 @@ struct neighbor_sampler_arg_t {
 
 /**
  * Binary format of the request:
- * uint64_t (req_id<<1) | uint64_t ppt | uint16_t depth | uint16_t nodes' length | [node_id_t node_id] * length
+ * uint64_t (req_id<<1) | uint64_t ppt | uint16_t depth | uint32_t nodes' length | [node_id_t node_id] * length
  * Binary format of the response:
- * uint64_t (req_id<<1)+1 | uint64_t ppt | uint16_t depth | uint16_t edges' length | [node_id_t src_id node_id_t dst_id] * length
+ * uint64_t (req_id<<1)+1 | uint64_t ppt | uint16_t depth | uint32_t edges' length | [node_id_t src_id node_id_t dst_id] * length
  */
 class NeighborSampler: public AMService {
   edge_shard_t edge_shard;
@@ -105,15 +105,15 @@ class NeighborSampler: public AMService {
   uint64_t node_slit;
   uint64_t req_id;
   static constexpr uint64_t PPT_ALL = 1000000000000ll;
-  static constexpr size_t HEADER_LEN = sizeof(uint64_t) + sizeof(uint64_t) + sizeof(uint16_t) + sizeof(uint16_t);
+  static constexpr size_t HEADER_LEN = sizeof(uint64_t) + sizeof(uint64_t) + sizeof(uint16_t) + sizeof(uint32_t);
   ConcurrentQueue<seed_with_label_t> *input_que;
   std::queue<seed_with_blocks_t>  *output_que;
   std::unordered_map<uint64_t, neighbor_sampler_prog_t> prog_que;
   void inline enqueue(uint64_t req_id);
-  void inline send_query(Communicator *comm, uint16_t dstrank, uint16_t depth, uint64_t req_id, node_id_t *nodes, uint16_t len, uint64_t ppt);
-  void inline send_response(Communicator *comm, uint16_t depth, uint64_t req_id, edge_elem_t *edges, uint16_t len, uint64_t ppt);
-  void inline recv_query(Communicator *comm, uint16_t depth, uint64_t ppt, uint64_t req_id, uint16_t len, const void *buffer);
-  void inline recv_response(Communicator *comm, uint16_t depth, uint64_t ppt, uint64_t req_id, uint16_t len, const void *buffer);
+  void inline send_query(Communicator *comm, uint16_t dstrank, uint16_t depth, uint64_t req_id, node_id_t *nodes, uint32_t len, uint64_t ppt);
+  void inline send_response(Communicator *comm, uint16_t depth, uint64_t req_id, edge_elem_t *edges, uint32_t len, uint64_t ppt);
+  void inline recv_query(Communicator *comm, uint16_t depth, uint64_t ppt, uint64_t req_id, uint32_t len, const void *buffer);
+  void inline recv_response(Communicator *comm, uint16_t depth, uint64_t ppt, uint64_t req_id, uint32_t len, const void *buffer);
   void scatter(Communicator *comm, uint16_t depth, uint64_t req_id, std::vector<node_id_t> &&seeds, uint64_t ppt);
 public:
   NeighborSampler(neighbor_sampler_arg_t &&arg,

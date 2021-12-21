@@ -85,7 +85,7 @@ NeighborSampler::NeighborSampler(neighbor_sampler_arg_t &&arg,
   }
 }
 
-void inline NeighborSampler::send_query(Communicator *comm, uint16_t dstrank, uint16_t depth, uint64_t req_id, node_id_t *nodes, uint16_t len, uint64_t ppt) {
+void inline NeighborSampler::send_query(Communicator *comm, uint16_t dstrank, uint16_t depth, uint64_t req_id, node_id_t *nodes, uint32_t len, uint64_t ppt) {
   size_t data_len = HEADER_LEN + len * sizeof(node_id_t);
   size_t offset = 0;
   std::unique_ptr<uint8_t[]> data = std::unique_ptr<uint8_t[]>(new uint8_t[data_len]);
@@ -95,13 +95,13 @@ void inline NeighborSampler::send_query(Communicator *comm, uint16_t dstrank, ui
   offset += sizeof(uint64_t);
   *(uint16_t *)PTR_BYTE_OFFSET(data.get(), offset) = depth;
   offset += sizeof(uint16_t);
-  *(uint16_t *)PTR_BYTE_OFFSET(data.get(), offset) = len;
-  offset += sizeof(uint16_t);
+  *(uint32_t *)PTR_BYTE_OFFSET(data.get(), offset) = len;
+  offset += sizeof(uint32_t);
   std::memcpy(PTR_BYTE_OFFSET(data.get(), offset), nodes, len * sizeof(node_id_t));
   comm->am_post(dstrank, am_id, std::move(data), data_len);
 }
 
-void inline NeighborSampler::send_response(Communicator *comm, uint16_t depth, uint64_t req_id, edge_elem_t *edges, uint16_t len, uint64_t ppt) {
+void inline NeighborSampler::send_response(Communicator *comm, uint16_t depth, uint64_t req_id, edge_elem_t *edges, uint32_t len, uint64_t ppt) {
   uint16_t dstrank = req_id % size;
   size_t data_len = HEADER_LEN + len * sizeof(edge_elem_t);
   size_t offset = 0;
@@ -112,8 +112,8 @@ void inline NeighborSampler::send_response(Communicator *comm, uint16_t depth, u
   offset += sizeof(uint64_t);
   *(uint16_t *)PTR_BYTE_OFFSET(data.get(), offset) = depth;
   offset += sizeof(uint16_t);
-  *(uint16_t *)PTR_BYTE_OFFSET(data.get(), offset) = len;
-  offset += sizeof(uint16_t);
+  *(uint32_t *)PTR_BYTE_OFFSET(data.get(), offset) = len;
+  offset += sizeof(uint32_t);
   std::memcpy(PTR_BYTE_OFFSET(data.get(), offset), edges, len * sizeof(edge_elem_t));
   comm->am_post(dstrank, am_id, std::move(data), data_len);
 }
@@ -123,14 +123,15 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
   uint64_t rem_ppt = ppt;
   std::sort(seeds.begin(), seeds.end());
   std::minstd_rand0 engine(req_id ^ ppt ^ depth);
-  for (uint16_t dstrank = 0, l, r = 0; dstrank < size; dstrank++) {
+  uint32_t l, r = 0;
+  for (uint16_t dstrank = 0; dstrank < size; dstrank++) {
     l = r;
     while (r < seeds.size() && seeds[r] / node_slit == dstrank) {
       r++;
     }
     if (l == r) continue;
     // LOG(INFO) << "scatter depth=" << depth <<  " rank=" << rank << " dstrank=" << dstrank << "req_id" << req_id;
-    for (uint16_t i = l; i < r; i++) {
+    for (uint32_t i = l; i < r; i++) {
       // LOG(INFO) << "i=" << i << " seeds[i]=" << seeds[i];
     }
     // Relay the query
@@ -151,11 +152,11 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
       size_t edge_len;
       node_id_t src;
       std::vector<node_id_t> next_seeds;
-      for (uint16_t dst_idx = l; dst_idx < r; dst_idx++) {
+      for (uint32_t dst_idx = l; dst_idx < r; dst_idx++) {
         edge_shard.in_edges(&src_ids, &edge_len, seeds[dst_idx]);
         // LOG(INFO) << "dst_idx= " << dst_idx << " edge_len=" << edge_len << "depth=" << depth << "fanouts[depth]= " << fanouts[depth];
         if (fanouts[depth] < 0 || edge_len <= fanouts[depth]) {
-          for (uint16_t idx = 0; idx < edge_len; idx++) {
+          for (uint32_t idx = 0; idx < edge_len; idx++) {
             src = src_ids[idx];
             // LOG(INFO) << "self all: idx=" << idx << " src=" << src << " dst=" << dst;
             prog_que[req_id].blocks[depth].edges.push_back(edge_elem_t{src, seeds[dst_idx]});
@@ -163,12 +164,12 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
           }
         } else {
           // sampling
-          std::vector<uint16_t> seq(edge_len);
+          std::vector<uint32_t> seq(edge_len);
           std::iota(seq.begin(), seq.end(), 0);
-          for (uint16_t idx = edge_len-1; idx >= fanouts[depth]; idx--) {
+          for (uint32_t idx = edge_len-1; idx >= fanouts[depth]; idx--) {
             std::swap(seq[idx], seq[engine() % idx]);
           }
-          for (uint16_t idx = 0; idx < fanouts[depth]; idx++) {
+          for (uint32_t idx = 0; idx < fanouts[depth]; idx++) {
             src = src_ids[seq[idx]];
             // LOG(INFO) << "self sample: idx=" << idx << " src=" << src << " dst=" << dst;
             prog_que[req_id].blocks[depth].edges.push_back(edge_elem_t{src, seeds[dst_idx]});
@@ -192,11 +193,11 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
       std::vector<node_id_t> next_seeds;
       node_id_t *src_ids;
       size_t edge_len;
-      for (uint16_t dst_idx = l; dst_idx < r; dst_idx++) {
+      for (uint32_t dst_idx = l; dst_idx < r; dst_idx++) {
         edge_shard.in_edges(&src_ids, &edge_len, seeds[dst_idx]);
         // LOG(INFO) << "dst_idx= " << dst_idx << " edge_len=" << edge_len << "depth=" << depth << "fanouts[depth]= " << fanouts[depth];
         if (fanouts[depth] < 0 || edge_len <= fanouts[depth]) {
-          for (uint16_t idx = 0; idx < edge_len; idx++) {
+          for (uint32_t idx = 0; idx < edge_len; idx++) {
             edge_elem_t elem{.src = src_ids[idx],.dst = seeds[dst_idx]};
             // LOG(INFO) << "other all: idx=" << idx << " src=" << elem.src << " dst=" << elem.dst;
             next_seeds.push_back(elem.src);
@@ -204,12 +205,12 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
           }
         } else {
           // sampling
-          std::vector<uint16_t> seq(edge_len);
+          std::vector<uint32_t> seq(edge_len);
           std::iota(seq.begin(), seq.end(), 0);
-          for (uint16_t idx = edge_len-1; idx >= fanouts[depth]; idx--) {
+          for (uint32_t idx = edge_len-1; idx >= fanouts[depth]; idx--) {
             std::swap(seq[idx], seq[engine() % idx]);
           }
-          for (uint16_t idx = 0; idx < fanouts[depth]; idx++) {
+          for (uint32_t idx = 0; idx < fanouts[depth]; idx++) {
             edge_elem_t elem{.src = src_ids[seq[idx]], .dst = seeds[dst_idx]};
             // LOG(INFO) << "other sample: idx=" << idx << " src=" << elem.src << " dst=" << elem.dst;
             next_seeds.push_back(elem.src);
@@ -227,7 +228,7 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
   }
 }
 
-void inline NeighborSampler::recv_query(Communicator *comm, uint16_t depth, uint64_t ppt, uint64_t req_id, uint16_t len, const void *buffer) {
+void inline NeighborSampler::recv_query(Communicator *comm, uint16_t depth, uint64_t ppt, uint64_t req_id, uint32_t len, const void *buffer) {
   std::vector<node_id_t> seeds(len);
   std::memcpy(seeds.data(), buffer, sizeof(node_id_t) * len);
   scatter(comm, depth, req_id, std::move(seeds), ppt);
@@ -260,7 +261,7 @@ void inline NeighborSampler::enqueue(uint64_t req_id) {
     << ",prog_que.size()=" << prog_que.size();
 }
 
-void inline NeighborSampler::recv_response(Communicator *comm, uint16_t depth, uint64_t ppt, uint64_t req_id, uint16_t len, const void *buffer) {
+void inline NeighborSampler::recv_response(Communicator *comm, uint16_t depth, uint64_t ppt, uint64_t req_id, uint32_t len, const void *buffer) {
   edges_t edges(len);
   std::memcpy(edges.data(), buffer, sizeof(edge_elem_t) * len);
   block_t *target_block = &prog_que[req_id].blocks[depth];
@@ -275,7 +276,8 @@ void inline NeighborSampler::recv_response(Communicator *comm, uint16_t depth, u
 void NeighborSampler::am_recv(Communicator *comm, const void *buffer, size_t length) {
   size_t offset = 0;
   uint64_t shifted_id;
-  uint16_t depth, data_length;
+  uint16_t depth;
+  uint32_t data_length;
   uint64_t ppt;
   shifted_id = *(uint64_t *)PTR_BYTE_OFFSET(buffer, offset);
   offset += sizeof(uint64_t);
@@ -283,8 +285,8 @@ void NeighborSampler::am_recv(Communicator *comm, const void *buffer, size_t len
   offset += sizeof(uint64_t);
   depth = *(uint16_t *)PTR_BYTE_OFFSET(buffer, offset);
   offset += sizeof(uint16_t);
-  data_length = *(uint16_t *)PTR_BYTE_OFFSET(buffer, offset);
-  offset += sizeof(uint16_t);
+  data_length = *(uint32_t *)PTR_BYTE_OFFSET(buffer, offset);
+  offset += sizeof(uint32_t);
 
   if (shifted_id & 1) {
     recv_response(comm, depth, ppt, shifted_id>>1, data_length, PTR_BYTE_OFFSET(buffer, offset));
