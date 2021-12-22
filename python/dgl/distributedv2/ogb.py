@@ -38,26 +38,26 @@ def node_pred(base_path: str, name: str):
     if meta_info['is hetero'] != "False":
         raise ValueError("must be HomoGraph")
 
-    num_node = np.memmap(path.join(base_path, 'raw/num-node-list.dat'), mode='r', dtype='int64')
+    num_node = np.memmap(path.join(base_path, 'raw/num-node-list.dat'), mode='c', dtype='int64')
     assert num_node.shape == (1,), "num_node shape must be (,)"
     num_node = num_node[0]
 
-    num_edge = np.memmap(path.join(base_path, 'raw/num-edge-list.dat'), mode='r', dtype='int64')
+    num_edge = np.memmap(path.join(base_path, 'raw/num-edge-list.dat'), mode='c', dtype='int64')
     assert num_edge.shape == (1,), "num_edge shape must be (,)"
     num_edge = num_edge[0]
 
-    edge = np.memmap(path.join(base_path, 'raw/edge.dat'), dtype='int64', mode='r')
+    edge = np.memmap(path.join(base_path, 'raw/edge.dat'), dtype='int64', mode='c')
     edge = edge.reshape((num_edge, 2))
     assert edge.shape == (num_edge, 2), "edge shape must be ({}, 2)".format(num_edge)
 
-    node_feat = np.memmap(path.join(base_path, 'raw/node-feat.dat'), dtype='float32', mode='r')
+    node_feat = np.memmap(path.join(base_path, 'raw/node-feat.dat'), dtype='float32', mode='c')
     node_feat = node_feat.reshape((num_node, node_feat.shape[0] // num_node))
     assert node_feat.shape[0] == num_node, "node feat shape[0] must be {}".format(num_node)
 
-    node_label =  np.memmap(path.join(base_path, 'raw/node-label.dat'), dtype='int16', mode='r')
+    node_label =  np.memmap(path.join(base_path, 'raw/node-label.dat'), dtype='int16', mode='c')
     assert node_label.shape == num_node, "node label shape must be {}".format(num_node)
 
-    train_nid = np.memmap(path.join(base_path, 'split/{}/train.dat'.format(meta_info['split'])), dtype='int64', mode='r')
+    train_nid = np.memmap(path.join(base_path, 'split/{}/train.dat'.format(meta_info['split'])), dtype='int64', mode='c')
     assert node_label.shape == num_node, "node label shape must be {}".format(num_node)
 
     return int(meta_info['num classes']), edge, node_feat, node_label, train_nid
