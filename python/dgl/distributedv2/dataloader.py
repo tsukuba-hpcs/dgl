@@ -125,6 +125,8 @@ class NodeDataLoader(ObjectBase):
         self.dataset = dataset
         self.num_samples = len(self.dataset) // self.comm.size
         self.total_size = self.num_samples * self.comm.size
+        self.num_batch = (self.num_samples + self.batch_size - 1) // self.batch_size
+        assert self.prefetch <= self.num_batch * self.max_epoch
         self.__init_handle_by_constructor__(
             _CAPI_DistV2CreateNodeDataLoader,
             self.comm,
@@ -139,34 +141,35 @@ class NodeDataLoader(ObjectBase):
         rkeybufs, addrs = self.__gather_feat_metadata()
         _CAPI_DistV2PrepareRMAService(self, rkeybufs, addrs)
         _CAPI_DistV2LaunchNodeDataLoader(self)
+        self.pre_iter = 0
+        self.__reset()
+        for _ in range(self.prefetch):
+            self.__enqueue()
 
     def __enqueue(self):
-        assert self.prefetch + self.iter < self.num_batch
-        l = self.batch_size * (self.prefetch + self.iter)
-        r = min(self.length, l + self.batch_size)
+        assert self.pre_iter < self.num_batch * self.max_epoch
+        l = self.batch_size * (self.pre_iter % self.num_batch)
+        r = min(self.num_samples, l + self.batch_size)
         _CAPI_DistV2EnqueueToNodeDataLoader(self, self.indices[l:r],
                 nd.from_dlpack(F.zerocopy_to_dlpack(F.zerocopy_from_numpy(self.iter_labels[l:r]))))
+        self.pre_iter += 1
+        if self.pre_iter % self.num_batch == 0:
+            self.__reset()
 
-    def __iter__(self):
-        assert self.epoch < self.max_epoch
-        self.iter = 0
-        self.comm.mpi.barrier()
-        g = np.random.default_rng(self.seed + self.epoch)
+    def __reset(self):
+        g = np.random.default_rng(self.seed + (self.pre_iter // self.batch_size))
         self.indices = g.permutation(len(self.dataset)).tolist()
         self.indices = self.indices[self.comm.rank:self.total_size:self.comm.size]
         self.iter_labels = self.labels[self.indices]
-        self.length = len(self.indices)
-        self.num_batch = (self.length + self.batch_size - 1) // self.batch_size
-        assert self.prefetch <= self.num_batch
-        for _ in range(self.prefetch):
-            self.__enqueue()
-        print('rank={} new epoch'.format(self.comm.rank))
-        self.epoch += 1
+
+    def __iter__(self):
+        self.iter = 0
         return self
 
     def __next__(self):
-        if self.iter + self.prefetch < self.num_batch:
+        if self.pre_iter < self.num_batch * self.max_epoch:
             self.__enqueue()
+
         if self.iter < self.num_batch:
             self.iter += 1
             _blocks, labels, feats = _CAPI_DistV2DequeueToNodeDataLoader(self)
