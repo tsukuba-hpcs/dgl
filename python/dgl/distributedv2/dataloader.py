@@ -2,6 +2,7 @@ import numpy as np
 import dgl
 from array import array
 from mpi4py import MPI
+from ..heterograph import DGLBlock
 from .comm import Communicator
 from .._ffi.object import register_object, ObjectBase
 from .._ffi.function import _init_api
@@ -168,8 +169,9 @@ class NodeDataLoader(ObjectBase):
             self.__enqueue()
         if self.iter < self.num_batch:
             self.iter += 1
-            ret = _CAPI_DistV2DequeueToNodeDataLoader(self)
-            return ret
+            _blocks, labels, feats = _CAPI_DistV2DequeueToNodeDataLoader(self)
+            blocks = [DGLBlock(block, (['_N'], ['_N'])) for block in _blocks]
+            return blocks, F.from_dgl_nd(feats),  F.from_dgl_nd(labels)
         raise StopIteration
 
 _init_api("dgl.distributedv2", __name__)

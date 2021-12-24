@@ -3,6 +3,7 @@
 
 #include <dgl/runtime/container.h>
 #include <dgl/packed_func_ext.h>
+#include "../graph/transform/to_bipartite.h"
 
 #include <numeric>
 #include <random>
@@ -445,8 +446,35 @@ DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2DequeueToNodeDataLoader")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
   NodeDataLoaderRef loader = args[0];
   seed_with_feat_t item;
+  dgl::HeteroGraphPtr a;
+  std::vector<dgl::IdArray> b;
   loader->dequeue(item);
-  *rv = 0;
+  List<Value> ret;
+  List<Value> blocks;
+  LOG(INFO) << "item.blocks.size()=" << item.blocks.size();
+  CHECK(item.blocks.size() > 0);
+  for (int16_t depth = item.blocks.size()-1; depth >= 0; depth--) {
+    std::vector<node_id_t> &src_nodes = item.blocks[depth].src_nodes;
+    std::vector<node_id_t> &dst_nodes = (depth > 0) ? item.blocks[depth-1].src_nodes : item.seeds;
+    edges_t &edges = item.blocks[depth].edges;
+    int64_t edges_len = (int64_t)edges.size();
+    CHECK(edges_len > 0);
+    IdArray src = IdArray::Empty(std::vector<int64_t>{edges_len},  DLDataType{kDLInt, 8 * sizeof(node_id_t), 1}, DLContext{kDLCPU, 0});
+    IdArray dst = IdArray::Empty(std::vector<int64_t>{edges_len},  DLDataType{kDLInt, 8 * sizeof(node_id_t), 1}, DLContext{kDLCPU, 0});
+    for (int64_t idx = 0; idx < edges_len; idx++) {
+      *(node_id_t *)PTR_BYTE_OFFSET(src->data, sizeof(node_id_t) * idx) = edges[idx].src;
+      *(node_id_t *)PTR_BYTE_OFFSET(dst->data, sizeof(node_id_t) * idx) = edges[idx].dst;
+    }
+    HeteroGraphPtr g = CreateFromCOO(1, edges_len, edges_len, src, dst, true, true);
+    std::vector<IdArray> src_nodes_arr{IdArray::FromVector(src_nodes)};
+    std::vector<IdArray> dst_nodes_arr{IdArray::FromVector(dst_nodes)};
+    std::tie(a, b) = transform::ToBlock<kDLCPU, node_id_t>(g, dst_nodes_arr, true, &src_nodes_arr);
+    blocks.push_back(Value(MakeValue(HeteroGraphRef(a))));
+  }
+  ret.push_back(Value(MakeValue(blocks)));
+  ret.push_back(Value(MakeValue(item.labels)));
+  ret.push_back(Value(MakeValue(item.feats)));
+  *rv = ret;
 });
 
 DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2MapRMAService")
