@@ -254,9 +254,11 @@ void inline NeighborSampler::enqueue(uint64_t req_id) {
   }
   output_que->push(seed_with_blocks_t(std::move(prog_que[req_id])));
   prog_que.erase(req_id);
+  /*
   LOG(INFO) << "sampler: req_id=" << req_id << " is finished"
     << ",total_edges=" << total_edges
     << ",prog_que.size()=" << prog_que.size();
+  */
 }
 
 void inline NeighborSampler::recv_response(Communicator *comm, uint16_t depth, uint64_t ppt, uint64_t req_id, uint32_t len, const void *buffer) {
@@ -353,7 +355,7 @@ void FeatLoader::progress(Communicator *comm) {
         std::memcpy(recv_buffer, PTR_BYTE_OFFSET(served_buffer().first, offset), feats_row_size);
         prog_que[req_id].received++;
         if (prog_que[req_id].received == prog_que[req_id].num_input_nodes) {
-          LOG(INFO) << "req_id=" << req_id << " is completed";
+          // LOG(INFO) << "req_id=" << req_id << " is completed";
           output_que->enqueue(seed_with_feat_t(std::move(prog_que[req_id])));
           prog_que.erase(req_id);
         }
@@ -368,9 +370,11 @@ void FeatLoader::progress(Communicator *comm) {
 void FeatLoader::rma_read_cb(Communicator *comm, uint64_t req_id, void *buffer) {
   prog_que[req_id].received++;
   if (prog_que[req_id].received == prog_que[req_id].num_input_nodes) {
+    /*
     LOG(INFO) << "rma_read_cb: req_id=" << req_id << " is finished"
       << ",num_input_nodes=" << prog_que[req_id].num_input_nodes
       << ",prog_que.size()=" << prog_que.size();
+    */
     output_que->enqueue(seed_with_feat_t(std::move(prog_que[req_id])));
     prog_que.erase(req_id);
   }
@@ -451,7 +455,7 @@ DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2DequeueToNodeDataLoader")
   loader->dequeue(item);
   List<Value> ret;
   List<Value> blocks;
-  LOG(INFO) << "item.blocks.size()=" << item.blocks.size();
+  // LOG(INFO) << "item.blocks.size()=" << item.blocks.size();
   CHECK(item.blocks.size() > 0);
   for (int16_t depth = item.blocks.size()-1; depth >= 0; depth--) {
     std::vector<node_id_t> &src_nodes = item.blocks[depth].src_nodes;

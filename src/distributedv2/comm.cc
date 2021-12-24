@@ -24,7 +24,7 @@ Communicator::Communicator(int rank, int size, size_t buffer_len)
   };
   ucp_config_t *config;
   ucp_config_read(NULL, NULL, &config);
-  ucp_config_print(config, stdout, "context config:", UCS_CONFIG_PRINT_CONFIG);
+  //ucp_config_print(config, stdout, "context config:", UCS_CONFIG_PRINT_CONFIG);
   ucp_config_release(config);
   if ((status = ucp_init(&am_params, NULL, &am_context)) != UCS_OK) {
     LOG(FATAL) << "ucp_init am_context error: " << ucs_status_string(status);
@@ -115,7 +115,7 @@ void Communicator::create_endpoints(void *addrs, size_t length) {
         LOG(FATAL) << "rank=" << rank
           << "ucp_worker_get_address error: " << ucs_status_string(status);
       }
-      ucp_ep_print_info(am_handlers[am_id].eps[srcrank], stdout);
+      //ucp_ep_print_info(am_handlers[am_id].eps[srcrank], stdout);
     }
     worker_addr_offset += am_handlers[am_id].worker_addr_len;
   }
