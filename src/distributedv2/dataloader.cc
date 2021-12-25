@@ -68,7 +68,7 @@ void edge_shard_t::in_edges(node_id_t **src_ids, size_t *length, node_id_t dst_i
 }
 
 NeighborSampler::NeighborSampler(neighbor_sampler_arg_t &&arg,
-  ConcurrentQueue<seed_with_label_t> *input_que,
+  BlockingConcurrentQueue<seed_with_label_t> *input_que,
   std::queue<seed_with_blocks_t> *output_que)
   : rank(arg.rank)
   , size(arg.size)
@@ -308,7 +308,7 @@ void NeighborSampler::progress(Communicator *comm) {
 
 FeatLoader::FeatLoader(feat_loader_arg_t &&arg,
   std::queue<seed_with_blocks_t>  *input_que,
-  ConcurrentQueue<seed_with_feat_t> *output_que)
+  BlockingConcurrentQueue<seed_with_feat_t> *output_que)
 : rank(arg.rank)
 , size(arg.size)
 , node_slit((arg.num_nodes + arg.size - 1) / arg.size)
@@ -408,7 +408,7 @@ void NodeDataLoader::enqueue(seed_with_label_t &&item) {
 }
 
 void NodeDataLoader::dequeue(seed_with_feat_t &item) {
-  while (!output_que.try_dequeue(item));
+  output_que.wait_dequeue(item);
 }
 
 DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2CreateNodeDataLoader")

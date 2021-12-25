@@ -13,7 +13,7 @@ protected:
   Communicator comm0, comm1;
   ServiceManager sm0, sm1;
   std::queue<seed_with_blocks_t> input0, input1;
-  ConcurrentQueue<seed_with_feat_t> output0, output1;
+  BlockingConcurrentQueue<seed_with_feat_t> output0, output1;
   FeatLoaderTest()
   : comm0(0, 2, 100)
   , comm1(1, 2, 100)

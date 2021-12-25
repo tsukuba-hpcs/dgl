@@ -10,7 +10,7 @@ class ServTest : public ::testing::Test {
 protected:
   Communicator comm0, comm1;
   ServiceManager sm0,sm1;
-  ConcurrentQueue<seed_with_label_t> input0, input1;
+  BlockingConcurrentQueue<seed_with_label_t> input0, input1;
   std::queue<seed_with_blocks_t> output0, output1;
   ServTest()
   :
