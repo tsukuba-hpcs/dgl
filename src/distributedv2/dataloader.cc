@@ -7,6 +7,7 @@
 
 #include <numeric>
 #include <random>
+#include <chrono>
 
 #include "../c_api_common.h"
 
@@ -14,6 +15,9 @@ namespace dgl {
 namespace distributedv2 {
 
 using namespace dgl::runtime;
+
+static int64_t dequeue_time = 0;
+static int64_t build_block_time = 0;
 
 edge_shard_t::edge_shard_t(NDArray &&_src, NDArray &&_dst, int rank, int size, uint64_t num_nodes)
 : src(std::move(_src))
@@ -452,7 +456,13 @@ DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2DequeueToNodeDataLoader")
   seed_with_feat_t item;
   dgl::HeteroGraphPtr a;
   std::vector<dgl::IdArray> b;
+  auto dstart = std::chrono::system_clock::now();
   loader->dequeue(item);
+  auto dend = std::chrono::system_clock::now();
+  if (dequeue_time == 0) {
+    LOG(INFO) << "first dequeue_time= " << std::chrono::duration_cast<std::chrono::milliseconds>(dend - dstart).count(); 
+  }
+  dequeue_time += std::chrono::duration_cast<std::chrono::milliseconds>(dend - dstart).count();
   List<Value> ret;
   List<Value> blocks;
   // LOG(INFO) << "item.blocks.size()=" << item.blocks.size();
@@ -475,6 +485,8 @@ DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2DequeueToNodeDataLoader")
     std::tie(a, b) = transform::ToBlock<kDLCPU, node_id_t>(g, dst_nodes_arr, true, &src_nodes_arr);
     blocks.push_back(Value(MakeValue(HeteroGraphRef(a))));
   }
+  auto bend = std::chrono::system_clock::now();
+  build_block_time += std::chrono::duration_cast<std::chrono::milliseconds>(bend - dend).count();
   ret.push_back(Value(MakeValue(blocks)));
   ret.push_back(Value(MakeValue(item.labels)));
   ret.push_back(Value(MakeValue(item.feats)));
@@ -511,6 +523,7 @@ DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2TermNodeDataLoader")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
   NodeDataLoaderRef loader = args[0];
   loader->terminate();
+  LOG(INFO) << "dequeue_time=" << dequeue_time << " build_block_time=" << build_block_time;
 });
 
 }
