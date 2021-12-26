@@ -73,7 +73,7 @@ void edge_shard_t::in_edges(node_id_t **src_ids, size_t *length, node_id_t dst_i
 
 NeighborSampler::NeighborSampler(neighbor_sampler_arg_t &&arg,
   BlockingConcurrentQueue<seed_with_label_t> *input_que,
-  std::queue<seed_with_blocks_t> *output_que)
+  std::queue<blocks_with_label_t> *output_que)
   : rank(arg.rank)
   , size(arg.size)
   , node_slit((arg.num_nodes + arg.size - 1) / arg.size)
@@ -161,7 +161,7 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
           for (uint32_t idx = 0; idx < edge_len; idx++) {
             src = src_ids[idx];
             // LOG(INFO) << "self all: idx=" << idx << " src=" << src << " dst=" << dst;
-            prog_que[req_id].blocks[depth].edges.push_back(edge_elem_t{src, seeds[dst_idx]});
+            prog_que[req_id].edges[depth].push_back(edge_elem_t{src, seeds[dst_idx]});
             next_seeds.push_back(src);
           }
         } else {
@@ -174,7 +174,7 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
           for (uint32_t idx = 0; idx < fanouts[depth]; idx++) {
             src = src_ids[seq[idx]];
             // LOG(INFO) << "self sample: idx=" << idx << " src=" << src << " dst=" << dst;
-            prog_que[req_id].blocks[depth].edges.push_back(edge_elem_t{src, seeds[dst_idx]});
+            prog_que[req_id].edges[depth].push_back(edge_elem_t{src, seeds[dst_idx]});
             next_seeds.push_back(src);
           }
         }
@@ -237,26 +237,40 @@ void inline NeighborSampler::recv_query(Communicator *comm, uint16_t depth, uint
 }
 
 void inline NeighborSampler::enqueue(uint64_t req_id) {
-  std::vector<node_id_t> src_nodes(prog_que[req_id].inputs.seeds);
-  size_t total_edges = 0;
-  for (uint16_t dep = 0; dep < num_layers; dep++) {
-    auto target_block = &prog_que[req_id].blocks[dep];
-    total_edges += target_block->edges.size();
-    std::sort(target_block->edges.begin(), target_block->edges.end());
-    target_block->edges.erase(
-      std::unique(target_block->edges.begin(), target_block->edges.end())
-    , target_block->edges.end());
-    for (edge_elem_t edge: target_block->edges) {
-      src_nodes.push_back(edge.src);
+  blocks_with_label_t ret = {
+    .blocks = std::vector<HeteroGraphPtr>{},
+    .labels = std::move(prog_que[req_id].inputs.labels),
+  };
+  HeteroGraphPtr a;
+  std::vector<dgl::IdArray> b;
+  std::vector<node_id_t> nodes = std::move(prog_que[req_id].inputs.seeds);
+  std::vector<IdArray> dst_nodes{IdArray::FromVector(nodes)};
+  for (uint16_t depth = 0; depth < num_layers; depth++) {
+    edges_t &edges = prog_que[req_id].edges[depth];
+    std::sort(edges.begin(), edges.end());
+    edges.erase(std::unique(edges.begin(), edges.end()), edges.end());
+    int64_t edges_len = (int64_t)edges.size();
+    CHECK(edges_len >= 0);
+    IdArray src = IdArray::Empty(std::vector<int64_t>{edges_len},  DLDataType{kDLInt, 8 * sizeof(node_id_t), 1}, DLContext{kDLCPU, 0});
+    IdArray dst = IdArray::Empty(std::vector<int64_t>{edges_len},  DLDataType{kDLInt, 8 * sizeof(node_id_t), 1}, DLContext{kDLCPU, 0});
+    for (int64_t idx = 0; idx < edges_len; idx++) {
+      *(node_id_t *)PTR_BYTE_OFFSET(src->data, sizeof(node_id_t) * idx) = edges[idx].src;
+      *(node_id_t *)PTR_BYTE_OFFSET(dst->data, sizeof(node_id_t) * idx) = edges[idx].dst;
     }
-    std::sort(src_nodes.begin(), src_nodes.end());
-    src_nodes.erase(
-      std::unique(src_nodes.begin(), src_nodes.end())
-    , src_nodes.end()
-    );
-    target_block->src_nodes = src_nodes;
+    for (edge_elem_t edge: edges) {
+      nodes.push_back(edge.src);
+    }
+    HeteroGraphPtr g = CreateFromCOO(1, edges_len, edges_len, src, dst, false, false);
+    std::sort(nodes.begin(), nodes.end());
+    nodes.erase(std::unique(nodes.begin(), nodes.end()), nodes.end());
+    std::vector<IdArray> src_nodes{IdArray::FromVector(nodes)};
+    std::tie(a, b) = transform::ToBlock<kDLCPU, node_id_t>(g, dst_nodes, true, &src_nodes);
+    ret.blocks.push_back(std::move(a));
+    dst_nodes = std::move(src_nodes);
   }
-  output_que->push(seed_with_blocks_t(std::move(prog_que[req_id])));
+  std::reverse(ret.blocks.begin(), ret.blocks.end());
+  ret.input_nodes = std::move(nodes);
+  output_que->push(std::move(ret));
   prog_que.erase(req_id);
   /*
   LOG(INFO) << "sampler: req_id=" << req_id << " is finished"
@@ -266,10 +280,8 @@ void inline NeighborSampler::enqueue(uint64_t req_id) {
 }
 
 void inline NeighborSampler::recv_response(Communicator *comm, uint16_t depth, uint64_t ppt, uint64_t req_id, uint32_t len, const void *buffer) {
-  edges_t edges(len);
-  std::memcpy(edges.data(), buffer, sizeof(edge_elem_t) * len);
-  block_t *target_block = &prog_que[req_id].blocks[depth];
-  target_block->edges.insert(target_block->edges.end(), edges.begin(), edges.end());
+  edges_t &edges = prog_que[req_id].edges[depth];
+  edges.insert(edges.end(), (edge_elem_t *)buffer, (edge_elem_t *)buffer + len);
   prog_que[req_id].ppt += ppt;
   // LOG(INFO) << "req_id=" << req_id << " ppt=" << ppt;
   if (prog_que[req_id].ppt == PPT_ALL) {
@@ -311,7 +323,7 @@ void NeighborSampler::progress(Communicator *comm) {
 }
 
 FeatLoader::FeatLoader(feat_loader_arg_t &&arg,
-  std::queue<seed_with_blocks_t>  *input_que,
+  std::queue<blocks_with_label_t>  *input_que,
   BlockingConcurrentQueue<blocks_with_feat_t> *output_que)
 : rank(arg.rank)
 , size(arg.size)
@@ -337,48 +349,24 @@ std::pair<void *, size_t> FeatLoader::served_buffer() {
 }
 
 void FeatLoader::enqueue(uint64_t req_id) {
-  std::vector<dgl::distributedv2::block_t> blocks = std::move(prog_que[req_id].inputs.blocks);
-  std::vector<node_id_t> seeds = std::move(prog_que[req_id].inputs.seeds);
+  std::vector<dgl::HeteroGraphPtr> blocks = std::move(prog_que[req_id].inputs.blocks);
   NDArray labels = std::move(prog_que[req_id].inputs.labels);
   NDArray feats = std::move(prog_que[req_id].feats);
   prog_que.erase(req_id);
-  HeteroGraphPtr a;
-  std::vector<dgl::IdArray> b;
   blocks_with_feat_t ret = {
     .labels = std::move(labels),
     .feats = std::move(feats),
-    .blocks = std::vector<HeteroGraphPtr>{},
+    .blocks = std::move(blocks),
   };
-  CHECK(blocks.size() > 0);
-  for (int16_t depth = blocks.size()-1; depth >= 0; depth--) {
-    std::vector<node_id_t> &src_nodes = blocks[depth].src_nodes;
-    std::vector<node_id_t> &dst_nodes = (depth > 0) ? blocks[depth-1].src_nodes : seeds;
-    edges_t &edges = blocks[depth].edges;
-    int64_t edges_len = (int64_t)edges.size();
-    CHECK(edges_len >= 0);
-    IdArray src = IdArray::Empty(std::vector<int64_t>{edges_len},  DLDataType{kDLInt, 8 * sizeof(node_id_t), 1}, DLContext{kDLCPU, 0});
-    IdArray dst = IdArray::Empty(std::vector<int64_t>{edges_len},  DLDataType{kDLInt, 8 * sizeof(node_id_t), 1}, DLContext{kDLCPU, 0});
-    for (int64_t idx = 0; idx < edges_len; idx++) {
-      *(node_id_t *)PTR_BYTE_OFFSET(src->data, sizeof(node_id_t) * idx) = edges[idx].src;
-      *(node_id_t *)PTR_BYTE_OFFSET(dst->data, sizeof(node_id_t) * idx) = edges[idx].dst;
-    }
-    HeteroGraphPtr g = CreateFromCOO(1, edges_len, edges_len, src, dst, true, true);
-    std::vector<IdArray> src_nodes_arr{IdArray::FromVector(src_nodes)};
-    std::vector<IdArray> dst_nodes_arr{IdArray::FromVector(dst_nodes)};
-    std::tie(a, b) = transform::ToBlock<kDLCPU, node_id_t>(g, dst_nodes_arr, true, &src_nodes_arr);
-    ret.blocks.push_back(std::move(a));
-  }
   output_que->enqueue(std::move(ret));
 }
 
 void FeatLoader::progress(Communicator *comm) {
   if (!input_que->empty()) {
-    CHECK(input_que->front().blocks.size() > 0);
-    seed_with_blocks_t item = std::move(input_que->front());
-    CHECK(item.blocks.size() > 0);
+    blocks_with_label_t item = std::move(input_que->front());
     prog_que[req_id] = feat_loader_prog_t(std::move(item));
     input_que->pop();
-    std::vector<node_id_t> &input_nodes = prog_que[req_id].inputs.blocks.back().src_nodes;
+    std::vector<node_id_t> &input_nodes = prog_que[req_id].inputs.input_nodes;
     std::vector<int64_t> shape{
       static_cast<int64_t>(input_nodes.size()),
       static_cast<int64_t>(feats_row)

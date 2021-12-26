@@ -12,7 +12,7 @@ protected:
   dgl::NDArray feat0, feat1;
   Communicator comm0, comm1;
   ServiceManager sm0, sm1;
-  std::queue<seed_with_blocks_t> input0, input1;
+  std::queue<blocks_with_label_t> input0, input1;
   BlockingConcurrentQueue<blocks_with_feat_t> output0, output1;
   FeatLoaderTest()
   : comm0(0, 2, 100)
@@ -73,14 +73,11 @@ TEST_F(FeatLoaderTest, TEST1) {
     mem_map();
   }
   std::vector<node_id_t> src_nodes{1, 6};
-  seed_with_blocks_t item(
-    std::vector<node_id_t>{}
-  , dgl::NDArray::FromVector(std::vector<int>{0})
-  , std::vector<block_t>{block_t{
-      .edges = std::vector<edge_elem_t>{}
-    , .src_nodes = src_nodes}}
-  );
-  ASSERT_EQ(item.blocks.size(), 1);
+  blocks_with_label_t item = {
+    .blocks = std::vector<dgl::HeteroGraphPtr>{}
+  , .labels = dgl::NDArray::FromVector(std::vector<int>{0, 0})
+  , .input_nodes = src_nodes,
+  };
   input0.push(std::move(item));
   blocks_with_feat_t out;
   while (!output0.try_dequeue(out)) {
