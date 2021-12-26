@@ -135,7 +135,7 @@ void Communicator::create_endpoints(void *addrs, size_t length) {
         LOG(FATAL) << "rank=" << rank
           << "ucp_worker_get_address error: " << ucs_status_string(status);
       }
-      ucp_ep_print_info(rma_handlers[rma_id].eps[srcrank], stdout);
+      // ucp_ep_print_info(rma_handlers[rma_id].eps[srcrank], stdout);
     }
     worker_addr_offset += rma_handlers[rma_id].worker_addr_len;
   }
