@@ -16,8 +16,9 @@ namespace distributedv2 {
 
 using namespace dgl::runtime;
 
-static int64_t dequeue_time = 0;
+static int64_t dequeue_time = -1;
 static int64_t build_block_time = 0;
+static int64_t build_ret_time = 0;
 
 edge_shard_t::edge_shard_t(NDArray &&_src, NDArray &&_dst, int rank, int size, uint64_t num_nodes)
 : src(std::move(_src))
@@ -459,8 +460,9 @@ DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2DequeueToNodeDataLoader")
   auto dstart = std::chrono::system_clock::now();
   loader->dequeue(item);
   auto dend = std::chrono::system_clock::now();
-  if (dequeue_time == 0) {
+  if (dequeue_time < 0) {
     LOG(INFO) << "first dequeue_time= " << std::chrono::duration_cast<std::chrono::milliseconds>(dend - dstart).count(); 
+    dequeue_time = 0;
   }
   dequeue_time += std::chrono::duration_cast<std::chrono::milliseconds>(dend - dstart).count();
   List<Value> ret;
@@ -487,9 +489,11 @@ DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2DequeueToNodeDataLoader")
   }
   auto bend = std::chrono::system_clock::now();
   build_block_time += std::chrono::duration_cast<std::chrono::milliseconds>(bend - dend).count();
-  ret.push_back(Value(MakeValue(blocks)));
-  ret.push_back(Value(MakeValue(item.labels)));
-  ret.push_back(Value(MakeValue(item.feats)));
+  ret.push_back(Value(MakeValue(std::move(blocks))));
+  ret.push_back(Value(MakeValue(std::move(item.labels))));
+  ret.push_back(Value(MakeValue(std::move(item.feats))));
+  auto rend = std::chrono::system_clock::now();
+  build_ret_time += std::chrono::duration_cast<std::chrono::milliseconds>(rend - bend).count();
   *rv = ret;
 });
 
@@ -523,7 +527,7 @@ DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2TermNodeDataLoader")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
   NodeDataLoaderRef loader = args[0];
   loader->terminate();
-  LOG(INFO) << "dequeue_time=" << dequeue_time << " build_block_time=" << build_block_time;
+  LOG(INFO) << "dequeue_time=" << dequeue_time << " build_block_time=" << build_block_time << " build_ret_time=" << build_ret_time;
 });
 
 }
