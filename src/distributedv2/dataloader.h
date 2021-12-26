@@ -21,7 +21,7 @@ using namespace dmlc::moodycamel;
 using node_id_t = int64_t;
 
 struct seed_with_label_t {
-  std::vector<node_id_t> seeds;
+  NDArray seeds;
   NDArray labels;
 };
 
@@ -53,12 +53,14 @@ struct edge_shard_t {
 };
 
 struct neighbor_sampler_prog_t {
-  seed_with_label_t inputs;
+  std::vector<node_id_t> seeds;
+  NDArray labels;
   std::vector<edges_t> edges;
   uint64_t ppt;
   neighbor_sampler_prog_t() : ppt(0) {}
-  neighbor_sampler_prog_t(int num_layers, seed_with_label_t &&inputs)
-  : inputs(std::move(inputs))
+  neighbor_sampler_prog_t(int num_layers, std::vector<node_id_t> &&_seeds, NDArray &&_labels)
+  : seeds(std::move(_seeds))
+  , labels(std::move(_labels))
   , edges(num_layers)
   , ppt(0) {}
 };

@@ -97,7 +97,7 @@ TEST_F(ServTest, TEST1) {
 
   std::vector<node_id_t> seeds{0};
   seed_with_label_t item = {
-    .seeds = seeds,
+    .seeds = dgl::NDArray::FromVector(seeds),
   };
   input0.enqueue(std::move(item));
   while (output0.empty()) {
@@ -174,7 +174,7 @@ TEST_F(ServTest, KARATE_CLUB_1) {
   }
   std::vector<node_id_t> seeds{33};
   seed_with_label_t item = {
-    .seeds = seeds,
+    .seeds = dgl::NDArray::FromVector(seeds),
   };
   input0.enqueue(std::move(item));
   while (output0.empty()) {
@@ -255,7 +255,7 @@ TEST_F(ServTest, KARATE_CLUB_2) {
   }
   std::vector<node_id_t> seeds{33};
   seed_with_label_t item = {
-    .seeds = seeds,
+    .seeds = dgl::NDArray::FromVector(seeds),
   };
   input0.enqueue(std::move(item));
   while (output0.empty()) {
@@ -366,7 +366,7 @@ TEST_F(ServTest, KARATE_CLUB_3) {
   }
   std::vector<node_id_t> seeds{33};
   seed_with_label_t item = {
-    .seeds = seeds,
+    .seeds = dgl::NDArray::FromVector(seeds),
   };
   input0.enqueue(std::move(item));
   while (output0.empty()) {
@@ -451,7 +451,7 @@ TEST_F(ServTest, KARATE_CLUB_4) {
   }
   std::vector<node_id_t> seeds{33};
   seed_with_label_t item = {
-    .seeds = seeds,
+    .seeds = dgl::NDArray::FromVector(seeds),
   };
   input0.enqueue(std::move(item));
   while (output0.empty()) {
@@ -514,7 +514,7 @@ TEST_F(ServTest, KARATE_CLUB_5) {
   }
   std::vector<node_id_t> seeds{33};
   seed_with_label_t item = {
-    .seeds = seeds,
+    .seeds = dgl::NDArray::FromVector(seeds),
   };
   input0.enqueue(std::move(item));
   while (output0.empty()) {
@@ -569,7 +569,7 @@ TEST_F(ServTest, FANOUT_TEST1) {
 
   std::vector<node_id_t> seeds{0};
   seed_with_label_t item = {
-    .seeds = seeds,
+    .seeds = dgl::NDArray::FromVector(seeds),
   };
   input0.enqueue(std::move(item));
   while (output0.empty()) {
@@ -623,7 +623,7 @@ TEST_F(ServTest, FANOUT_KARATE_CLUB_1) {
   }
   std::vector<node_id_t> seeds{33};
   seed_with_label_t item = {
-    .seeds = seeds,
+    .seeds = dgl::NDArray::FromVector(seeds),
   };
   input0.enqueue(std::move(item));
   while (output0.empty()) {

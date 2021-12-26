@@ -150,7 +150,8 @@ class NodeDataLoader(ObjectBase):
         assert self.pre_iter < self.num_batch * self.max_epoch
         l = self.batch_size * (self.pre_iter % self.num_batch)
         r = min(self.num_samples, l + self.batch_size)
-        _CAPI_DistV2EnqueueToNodeDataLoader(self, self.indices[l:r],
+        _CAPI_DistV2EnqueueToNodeDataLoader(self, 
+                nd.from_dlpack(F.zerocopy_to_dlpack(F.zerocopy_from_numpy(self.indices[l:r]))),
                 nd.from_dlpack(F.zerocopy_to_dlpack(F.zerocopy_from_numpy(self.iter_labels[l:r]))))
         self.pre_iter += 1
         if self.pre_iter % self.num_batch == 0:
@@ -158,8 +159,7 @@ class NodeDataLoader(ObjectBase):
 
     def __reset(self):
         g = np.random.default_rng(self.seed + (self.pre_iter // self.batch_size))
-        self.indices = g.permutation(len(self.dataset)).tolist()
-        self.indices = self.indices[self.comm.rank:self.total_size:self.comm.size]
+        self.indices = self.dataset[g.permutation(len(self.dataset))[self.comm.rank:self.total_size:self.comm.size]]
         self.iter_labels = self.labels[self.indices]
 
     def __iter__(self):

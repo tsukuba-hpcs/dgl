@@ -239,11 +239,11 @@ void inline NeighborSampler::recv_query(Communicator *comm, uint16_t depth, uint
 void inline NeighborSampler::enqueue(uint64_t req_id) {
   blocks_with_label_t ret = {
     .blocks = std::vector<HeteroGraphPtr>{},
-    .labels = std::move(prog_que[req_id].inputs.labels),
+    .labels = std::move(prog_que[req_id].labels),
   };
   HeteroGraphPtr a;
   std::vector<dgl::IdArray> b;
-  std::vector<node_id_t> nodes = std::move(prog_que[req_id].inputs.seeds);
+  std::vector<node_id_t> nodes = std::move(prog_que[req_id].seeds);
   std::vector<IdArray> dst_nodes{IdArray::FromVector(nodes)};
   for (uint16_t depth = 0; depth < num_layers; depth++) {
     edges_t &edges = prog_que[req_id].edges[depth];
@@ -316,8 +316,12 @@ void NeighborSampler::am_recv(Communicator *comm, const void *buffer, size_t len
 void NeighborSampler::progress(Communicator *comm) {
   seed_with_label_t input;
   if (input_que->try_dequeue(input)) {
-    prog_que[req_id] = neighbor_sampler_prog_t(num_layers, std::move(input));
-    scatter(comm, 0, req_id, std::vector<node_id_t>(prog_que[req_id].inputs.seeds), PPT_ALL);
+    CHECK(input.seeds->dtype.code == kDLInt);
+    CHECK(input.seeds->dtype.bits == 8 * sizeof(node_id_t));
+    std::vector<node_id_t> seeds(input.seeds.NumElements());
+    std::memcpy(&seeds[0], input.seeds->data, sizeof(node_id_t) * input.seeds.NumElements());
+    prog_que[req_id] = neighbor_sampler_prog_t(num_layers, std::move(seeds), std::move(input.labels));
+    scatter(comm, 0, req_id, std::vector<node_id_t>(prog_que[req_id].seeds), PPT_ALL);
     req_id += size;
   }
 }
@@ -462,10 +466,10 @@ DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2CreateNodeDataLoader")
 DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2EnqueueToNodeDataLoader")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
   NodeDataLoaderRef loader = args[0];
-  List<Value> _seeds = args[1];
+  NDArray seeds = args[1];
   NDArray labels = args[2];
   seed_with_label_t item = {
-    .seeds = ListValueToVector<node_id_t>(_seeds),
+    .seeds = std::move(seeds),
     .labels = std::move(labels),
   };
   loader->enqueue(std::move(item));
