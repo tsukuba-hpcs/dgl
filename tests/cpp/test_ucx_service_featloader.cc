@@ -13,7 +13,7 @@ protected:
   Communicator comm0, comm1;
   ServiceManager sm0, sm1;
   std::queue<seed_with_blocks_t> input0, input1;
-  BlockingConcurrentQueue<seed_with_feat_t> output0, output1;
+  BlockingConcurrentQueue<blocks_with_feat_t> output0, output1;
   FeatLoaderTest()
   : comm0(0, 2, 100)
   , comm1(1, 2, 100)
@@ -82,8 +82,7 @@ TEST_F(FeatLoaderTest, TEST1) {
   );
   ASSERT_EQ(item.blocks.size(), 1);
   input0.push(std::move(item));
-  
-  seed_with_feat_t out;
+  blocks_with_feat_t out;
   while (!output0.try_dequeue(out)) {
     sm0.progress();
     sm1.progress();

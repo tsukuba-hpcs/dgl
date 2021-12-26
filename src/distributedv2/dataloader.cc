@@ -3,7 +3,6 @@
 
 #include <dgl/runtime/container.h>
 #include <dgl/packed_func_ext.h>
-#include "../graph/transform/to_bipartite.h"
 
 #include <numeric>
 #include <random>
@@ -313,7 +312,7 @@ void NeighborSampler::progress(Communicator *comm) {
 
 FeatLoader::FeatLoader(feat_loader_arg_t &&arg,
   std::queue<seed_with_blocks_t>  *input_que,
-  BlockingConcurrentQueue<seed_with_feat_t> *output_que)
+  BlockingConcurrentQueue<blocks_with_feat_t> *output_que)
 : rank(arg.rank)
 , size(arg.size)
 , node_slit((arg.num_nodes + arg.size - 1) / arg.size)
@@ -335,6 +334,41 @@ std::pair<void *, size_t> FeatLoader::served_buffer() {
     length *= local_feats->shape[dim];
   }
   return std::make_pair(local_feats->data, length);
+}
+
+void FeatLoader::enqueue(uint64_t req_id) {
+  std::vector<dgl::distributedv2::block_t> blocks = std::move(prog_que[req_id].inputs.blocks);
+  std::vector<node_id_t> seeds = std::move(prog_que[req_id].inputs.seeds);
+  NDArray labels = std::move(prog_que[req_id].inputs.labels);
+  NDArray feats = std::move(prog_que[req_id].feats);
+  prog_que.erase(req_id);
+  HeteroGraphPtr a;
+  std::vector<dgl::IdArray> b;
+  blocks_with_feat_t ret = {
+    .labels = std::move(labels),
+    .feats = std::move(feats),
+    .blocks = std::vector<HeteroGraphPtr>{},
+  };
+  CHECK(blocks.size() > 0);
+  for (int16_t depth = blocks.size()-1; depth >= 0; depth--) {
+    std::vector<node_id_t> &src_nodes = blocks[depth].src_nodes;
+    std::vector<node_id_t> &dst_nodes = (depth > 0) ? blocks[depth-1].src_nodes : seeds;
+    edges_t &edges = blocks[depth].edges;
+    int64_t edges_len = (int64_t)edges.size();
+    CHECK(edges_len >= 0);
+    IdArray src = IdArray::Empty(std::vector<int64_t>{edges_len},  DLDataType{kDLInt, 8 * sizeof(node_id_t), 1}, DLContext{kDLCPU, 0});
+    IdArray dst = IdArray::Empty(std::vector<int64_t>{edges_len},  DLDataType{kDLInt, 8 * sizeof(node_id_t), 1}, DLContext{kDLCPU, 0});
+    for (int64_t idx = 0; idx < edges_len; idx++) {
+      *(node_id_t *)PTR_BYTE_OFFSET(src->data, sizeof(node_id_t) * idx) = edges[idx].src;
+      *(node_id_t *)PTR_BYTE_OFFSET(dst->data, sizeof(node_id_t) * idx) = edges[idx].dst;
+    }
+    HeteroGraphPtr g = CreateFromCOO(1, edges_len, edges_len, src, dst, true, true);
+    std::vector<IdArray> src_nodes_arr{IdArray::FromVector(src_nodes)};
+    std::vector<IdArray> dst_nodes_arr{IdArray::FromVector(dst_nodes)};
+    std::tie(a, b) = transform::ToBlock<kDLCPU, node_id_t>(g, dst_nodes_arr, true, &src_nodes_arr);
+    ret.blocks.push_back(std::move(a));
+  }
+  output_que->enqueue(std::move(ret));
 }
 
 void FeatLoader::progress(Communicator *comm) {
@@ -361,8 +395,7 @@ void FeatLoader::progress(Communicator *comm) {
         prog_que[req_id].received++;
         if (prog_que[req_id].received == prog_que[req_id].num_input_nodes) {
           // LOG(INFO) << "req_id=" << req_id << " is completed";
-          output_que->enqueue(seed_with_feat_t(std::move(prog_que[req_id])));
-          prog_que.erase(req_id);
+          enqueue(req_id);
         }
         continue;
       }
@@ -380,8 +413,7 @@ void FeatLoader::rma_read_cb(Communicator *comm, uint64_t req_id, void *buffer) 
       << ",num_input_nodes=" << prog_que[req_id].num_input_nodes
       << ",prog_que.size()=" << prog_que.size();
     */
-    output_que->enqueue(seed_with_feat_t(std::move(prog_que[req_id])));
-    prog_que.erase(req_id);
+    enqueue(req_id);
   }
 }
 
@@ -412,7 +444,7 @@ void NodeDataLoader::enqueue(seed_with_label_t &&item) {
   input_que.enqueue(std::move(item));
 }
 
-void NodeDataLoader::dequeue(seed_with_feat_t &item) {
+void NodeDataLoader::dequeue(blocks_with_feat_t &item) {
   output_que.wait_dequeue(item);
 }
 
@@ -454,9 +486,7 @@ DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2EnqueueToNodeDataLoader")
 DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2DequeueToNodeDataLoader")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
   NodeDataLoaderRef loader = args[0];
-  seed_with_feat_t item;
-  dgl::HeteroGraphPtr a;
-  std::vector<dgl::IdArray> b;
+  blocks_with_feat_t item;
   auto dstart = std::chrono::system_clock::now();
   loader->dequeue(item);
   auto dend = std::chrono::system_clock::now();
@@ -469,23 +499,8 @@ DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2DequeueToNodeDataLoader")
   List<Value> blocks;
   // LOG(INFO) << "item.blocks.size()=" << item.blocks.size();
   CHECK(item.blocks.size() > 0);
-  for (int16_t depth = item.blocks.size()-1; depth >= 0; depth--) {
-    std::vector<node_id_t> &src_nodes = item.blocks[depth].src_nodes;
-    std::vector<node_id_t> &dst_nodes = (depth > 0) ? item.blocks[depth-1].src_nodes : item.seeds;
-    edges_t &edges = item.blocks[depth].edges;
-    int64_t edges_len = (int64_t)edges.size();
-    CHECK(edges_len > 0);
-    IdArray src = IdArray::Empty(std::vector<int64_t>{edges_len},  DLDataType{kDLInt, 8 * sizeof(node_id_t), 1}, DLContext{kDLCPU, 0});
-    IdArray dst = IdArray::Empty(std::vector<int64_t>{edges_len},  DLDataType{kDLInt, 8 * sizeof(node_id_t), 1}, DLContext{kDLCPU, 0});
-    for (int64_t idx = 0; idx < edges_len; idx++) {
-      *(node_id_t *)PTR_BYTE_OFFSET(src->data, sizeof(node_id_t) * idx) = edges[idx].src;
-      *(node_id_t *)PTR_BYTE_OFFSET(dst->data, sizeof(node_id_t) * idx) = edges[idx].dst;
-    }
-    HeteroGraphPtr g = CreateFromCOO(1, edges_len, edges_len, src, dst, true, true);
-    std::vector<IdArray> src_nodes_arr{IdArray::FromVector(src_nodes)};
-    std::vector<IdArray> dst_nodes_arr{IdArray::FromVector(dst_nodes)};
-    std::tie(a, b) = transform::ToBlock<kDLCPU, node_id_t>(g, dst_nodes_arr, true, &src_nodes_arr);
-    blocks.push_back(Value(MakeValue(HeteroGraphRef(a))));
+  for (size_t depth = 0; depth < item.blocks.size(); depth++) {
+    blocks.push_back(Value(MakeValue(HeteroGraphRef(item.blocks[depth]))));
   }
   auto bend = std::chrono::system_clock::now();
   build_block_time += std::chrono::duration_cast<std::chrono::milliseconds>(bend - dend).count();

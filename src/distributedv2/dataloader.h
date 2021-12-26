@@ -9,6 +9,7 @@
 
 #include "service.h"
 #include <dmlc/blockingconcurrentqueue.h>
+#include "../graph/transform/to_bipartite.h"
 #include <vector>
 #include <queue>
 
@@ -137,18 +138,10 @@ struct feat_loader_prog_t {
   }
 };
 
-struct seed_with_feat_t {
-  std::vector<node_id_t> seeds;
+struct blocks_with_feat_t {
   NDArray labels;
-  std::vector<block_t> blocks;
   NDArray feats;
-  seed_with_feat_t(feat_loader_prog_t &&prog)
-  : seeds(std::move(prog.inputs.seeds))
-  , labels(std::move(prog.inputs.labels))
-  , blocks(std::move(prog.inputs.blocks))
-  , feats(std::move(prog.feats)) {
-  }
-  seed_with_feat_t() {}
+  std::vector<HeteroGraphPtr> blocks;
 };
 
 struct feat_loader_arg_t {
@@ -166,12 +159,13 @@ class FeatLoader: public RMAService {
   uint64_t node_slit;
   uint64_t req_id;
   std::queue<seed_with_blocks_t>  *input_que;
-  BlockingConcurrentQueue<seed_with_feat_t> *output_que;
+  BlockingConcurrentQueue<blocks_with_feat_t> *output_que;
   std::unordered_map<uint64_t, feat_loader_prog_t> prog_que;
+  void inline enqueue(uint64_t req_id);
 public:
   FeatLoader(feat_loader_arg_t &&arg,
     std::queue<seed_with_blocks_t>  *input_que,
-    BlockingConcurrentQueue<seed_with_feat_t> *output_que
+    BlockingConcurrentQueue<blocks_with_feat_t> *output_que
   );
   std::pair<void *, size_t> served_buffer();
   void rma_read_cb(Communicator *comm, uint64_t req_id, void *buffer);
@@ -191,12 +185,12 @@ struct node_dataloader_arg_t {
 class NodeDataLoader: public ServiceManager, public runtime::Object {
   BlockingConcurrentQueue<seed_with_label_t> input_que;
   std::queue<seed_with_blocks_t> bridge_que;
-  BlockingConcurrentQueue<seed_with_feat_t> output_que;
+  BlockingConcurrentQueue<blocks_with_feat_t> output_que;
 public:
   static constexpr const char* _type_key = "distributedv2.NodeDataLoader";
   NodeDataLoader(Communicator *comm, node_dataloader_arg_t &&arg);
   void enqueue(seed_with_label_t &&item);
-  void dequeue(seed_with_feat_t &item);
+  void dequeue(blocks_with_feat_t &item);
   DGL_DECLARE_OBJECT_TYPE_INFO(NodeDataLoader, runtime::Object);
 };
 
