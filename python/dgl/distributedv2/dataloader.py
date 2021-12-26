@@ -106,7 +106,7 @@ class NodeDataLoader(ObjectBase):
     def __init__(self, dataset, num_layers, edges, feats, labels, max_epoch, fanouts = None, batch_size = 1000, prefetch = 5, seed = 777, comm = MPI.COMM_WORLD):
         self.comm = Communicator(comm)
         self.num_layers = num_layers
-        self.labels = labels
+        self.labels = labels[:]
         self.max_epoch = max_epoch
         self.prefetch = prefetch
         self.num_nodes = feats.shape[0]
@@ -122,7 +122,7 @@ class NodeDataLoader(ObjectBase):
         src, dst = self.__create_edgeshard(edges)
         self.epoch = 0
         self.seed = seed
-        self.dataset = dataset
+        self.dataset = dataset[:]
         self.num_samples = len(self.dataset) // self.comm.size
         self.total_size = self.num_samples * self.comm.size
         self.num_batch = (self.num_samples + self.batch_size - 1) // self.batch_size
