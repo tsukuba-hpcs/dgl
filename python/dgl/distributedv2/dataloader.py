@@ -169,7 +169,7 @@ class NodeDataLoader(ObjectBase):
     def __next__(self):
         if self.pre_iter < self.num_batch * self.max_epoch:
             self.__enqueue()
-
+        self.comm.mpi.barrier()
         if self.iter < self.num_batch:
             self.iter += 1
             _blocks, labels, feats = _CAPI_DistV2DequeueToNodeDataLoader(self)
