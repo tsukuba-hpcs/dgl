@@ -158,7 +158,7 @@ class NodeDataLoader(ObjectBase):
             self.__reset()
 
     def __reset(self):
-        g = np.random.default_rng(self.seed + (self.pre_iter // self.batch_size))
+        g = np.random.default_rng(self.seed + (self.pre_iter // self.num_batch))
         self.indices = self.dataset[g.permutation(len(self.dataset))[self.comm.rank:self.total_size:self.comm.size]]
         self.iter_labels = self.labels[self.indices]
 
