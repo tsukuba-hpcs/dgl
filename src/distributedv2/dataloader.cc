@@ -228,6 +228,7 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
       }
     }
   }
+  CHECK(r == seeds.size());
 }
 
 void inline NeighborSampler::recv_query(Communicator *comm, uint16_t depth, uint64_t ppt, uint64_t req_id, uint32_t len, const void *buffer) {
