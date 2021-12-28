@@ -107,9 +107,9 @@ ToBlockCPU(HeteroGraphPtr graph, const std::vector<IdArray> &rhs_nodes,
     const IdHashMap<IdType> &rhs_map = rhs_node_mappings[dsttype];
     if (rhs_map.Size() == 0) {
       // No rhs nodes are given for this edge type. Create an empty graph.
-      rel_graphs.push_back(CreateFromCOO(
-          2, lhs_map.Size(), rhs_map.Size(),
-          aten::NullArray(), aten::NullArray()));
+      aten::CSRMatrix csr = COOToCSR(COOMatrix(
+        lhs_map.Size(), rhs_map.Size(), aten::NullArray(), aten::NullArray()));
+      rel_graphs.push_back(CreateFromCSR(2, csr));
       induced_edges.push_back(aten::NullArray());
     } else {
       IdArray new_src = lhs_map.Map(edge_arrays[etype].src, -1);
@@ -120,9 +120,10 @@ ToBlockCPU(HeteroGraphPtr graph, const std::vector<IdArray> &rhs_nodes,
           << "Node " << edge_arrays[etype].dst.Ptr<IdType>()[i] << " does not exist"
           << " in `rhs_nodes`. Argument `rhs_nodes` must contain all the edge"
           << " destination nodes.";
-      rel_graphs.push_back(CreateFromCOO(
-          2, lhs_map.Size(), rhs_map.Size(),
-          new_src, new_dst));
+      aten::CSRMatrix csr = aten::COOToCSR(aten::COOMatrix(
+        lhs_map.Size(), rhs_map.Size(), new_src, new_dst,
+        NullArray(), true, true));
+      rel_graphs.push_back(CreateFromCSR(2, csr));
       induced_edges.push_back(edge_arrays[etype].id);
     }
   }
