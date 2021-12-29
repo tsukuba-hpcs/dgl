@@ -66,6 +66,9 @@ class ServiceManager {
   std::thread progress_thread;
   static void am_recv_cb(void *arg, const void *buffer, size_t length);
   static void rma_recv_cb(void *arg, uint64_t req_id, void *address);
+  // for debugging
+  size_t progress_counter = 0;
+  static constexpr size_t COUNTER_THRESHOLD = 1000000000;
 public:
   ServiceManager(int rank, int size, Communicator *comm);
   void add_stub_service(std::unique_ptr<StubService> &&serv);

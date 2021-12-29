@@ -9,7 +9,8 @@ ServiceManager::ServiceManager(int rank, int size, Communicator *comm)
   : shutdown(false)
   , rank(rank)
   , size(size)
-  , comm(comm) {
+  , comm(comm)
+  , progress_counter(0) {
   servs.reserve(MAX_SERVICE_LEN);
   args.reserve(MAX_SERVICE_LEN);
 }
@@ -63,6 +64,10 @@ void ServiceManager::progress() {
     serv->progress(comm);
   }
   comm->progress();
+  progress_counter++;
+  if (progress_counter % COUNTER_THRESHOLD == 0) {
+    LOG(INFO) << "rank=" << rank << " ServiceManager::progress()";
+  }
 }
 
 void ServiceManager::run(ServiceManager *self) {
