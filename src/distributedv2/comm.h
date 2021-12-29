@@ -108,6 +108,7 @@ struct rma_mem_ret_t {
 class Communicator: public runtime::Object {
   CommState state;
   std::vector<uint8_t> worker_addrs;
+  static void err_cb(void *arg, ucp_ep_h ep, ucs_status_t status);
   // for Active Message
   ucp_context_h am_context;
   IovPool am_pool;

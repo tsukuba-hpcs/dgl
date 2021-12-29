@@ -94,6 +94,10 @@ std::pair<void *, int> Communicator::create_workers() {
   return std::make_pair(&worker_addrs[0], static_cast<int>(worker_addrs.size()));
 }
 
+void Communicator::err_cb(void *arg, ucp_ep_h ep, ucs_status_t status) {
+  LOG(FATAL) << "error handling callback was invoked with status" << ucs_status_string(status);
+}
+
 void Communicator::create_endpoints(void *addrs, size_t length) {
   CHECK(state == CommState::WORKER_READY);
   CHECK(length == size * worker_addrs.size());
@@ -107,9 +111,13 @@ void Communicator::create_endpoints(void *addrs, size_t length) {
       ucp_address_t *addr = (ucp_address_t *)UCS_PTR_BYTE_OFFSET(addrs,
         srcrank * worker_addrs.size() + worker_addr_offset);
       ucp_ep_params_t params = {
-        .field_mask = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS | UCP_EP_PARAM_FIELD_ERR_HANDLING_MODE,
+        .field_mask = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS | UCP_EP_PARAM_FIELD_ERR_HANDLING_MODE | UCP_EP_PARAM_FIELD_ERR_HANDLER,
         .address = addr,
         .err_mode = UCP_ERR_HANDLING_MODE_PEER,
+        .err_handler = {
+          .cb = err_cb,
+          .arg = NULL,
+        },
       };
       if ((status = ucp_ep_create(am_handlers[am_id].worker, &params, &am_handlers[am_id].eps[srcrank])) != UCS_OK) {
         LOG(FATAL) << "rank=" << rank
@@ -127,9 +135,13 @@ void Communicator::create_endpoints(void *addrs, size_t length) {
       ucp_address_t *addr = (ucp_address_t *)UCS_PTR_BYTE_OFFSET(addrs,
         srcrank * worker_addrs.size() + worker_addr_offset);
       ucp_ep_params_t params = {
-        .field_mask = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS | UCP_EP_PARAM_FIELD_ERR_HANDLING_MODE,
+        .field_mask = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS | UCP_EP_PARAM_FIELD_ERR_HANDLING_MODE | UCP_EP_PARAM_FIELD_ERR_HANDLER,
         .address = addr,
         .err_mode = UCP_ERR_HANDLING_MODE_PEER,
+        .err_handler = {
+          .cb = err_cb,
+          .arg = NULL,
+        },
       };
       if ((status = ucp_ep_create(rma_handlers[rma_id].worker, &params, &rma_handlers[rma_id].eps[srcrank])) != UCS_OK) {
         LOG(FATAL) << "rank=" << rank
