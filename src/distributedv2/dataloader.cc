@@ -381,6 +381,7 @@ void FeatLoader::progress(Communicator *comm) {
     for (size_t row = 0; row < shape[0]; row++) {
       node_id_t node = input_nodes[row];
       int src_rank = node / node_slit;
+      CHECK(src_rank < size);
       uint64_t offset = (node % node_slit) * feats_row_size;
       void *recv_buffer = PTR_BYTE_OFFSET(prog_que[req_id].feats->data, feats_row_size * row);
       if (src_rank == rank) {
