@@ -23,6 +23,7 @@ endif()
 # and add set(OPTION VALUE) to override these build options.
 # Alernatively, use cmake -DOPTION=VALUE through command-line.
 dgl_option(USE_CUDA "Build with CUDA" OFF)
+dgl_option(USE_NVTX "Build with NVTX support" OFF)
 dgl_option(USE_NCCL "Build with NCCL support" OFF)
 dgl_option(USE_SYSTEM_NCCL "Build using system's NCCL library" OFF)
 dgl_option(USE_OPENMP "Build with OpenMP" ON)
@@ -187,6 +188,10 @@ if(USE_CUDA)
   endif(USE_NCCL)
 
   list(APPEND DGL_LINKER_LIBS ${NCCL_LIBRARY})
+  if(USE_NVTX)
+    message(STATUS "Build with NVTX support")
+    add_definitions(-DDGL_USE_NVTX)
+  endif(USE_NVTX)
 endif(USE_CUDA)
 
 file(GLOB_RECURSE DGL_SRC_2

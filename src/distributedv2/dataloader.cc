@@ -322,7 +322,14 @@ void NeighborSampler::progress(Communicator *comm) {
     std::vector<node_id_t> seeds(input.seeds.NumElements());
     std::memcpy(&seeds[0], input.seeds->data, sizeof(node_id_t) * input.seeds.NumElements());
     prog_que[req_id] = neighbor_sampler_prog_t(num_layers, std::move(seeds), std::move(input.labels));
+#ifdef DGL_USE_NVTX
+  nvtxRangePush(__FUNCTION__);
+  nvtxMark("NeighborSampler::progress(): Scatter");
+#endif // DGL_USE_NVTX
     scatter(comm, 0, req_id, std::vector<node_id_t>(prog_que[req_id].seeds), PPT_ALL);
+#ifdef DGL_USE_NVTX
+    nvtxRangePop();
+#endif // DGL_USE_NVTX
     req_id += size;
   }
 }
@@ -482,7 +489,14 @@ DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2DequeueToNodeDataLoader")
   NodeDataLoaderRef loader = args[0];
   blocks_with_feat_t item;
   auto dstart = std::chrono::system_clock::now();
+#ifdef DGL_USE_NVTX
+  nvtxRangePush(__FUNCTION__);
+  nvtxMark("Dequeue");
+#endif // DGL_USE_NVTX
   loader->dequeue(item);
+#ifdef DGL_USE_NVTX
+  nvtxRangePop();
+#endif // DGL_USE_NVTX
   auto dend = std::chrono::system_clock::now();
   if (dequeue_time < 0) {
     LOG(INFO) << "first dequeue_time= " << std::chrono::duration_cast<std::chrono::milliseconds>(dend - dstart).count(); 

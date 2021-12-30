@@ -15,6 +15,11 @@
 #include <queue>
 #include <unordered_map>
 #include <thread>
+#ifdef DGL_USE_NVTX
+#include <nvToolsExt.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+#endif  // DGL_USE_NVTX
 
 
 #include "comm.h"

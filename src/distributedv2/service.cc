@@ -13,6 +13,9 @@ ServiceManager::ServiceManager(int rank, int size, Communicator *comm)
   , progress_counter(0) {
   servs.reserve(MAX_SERVICE_LEN);
   args.reserve(MAX_SERVICE_LEN);
+#ifdef DGL_USE_NVTX
+  nvtxNameOsThread(syscall(SYS_gettid), "Main Thread");
+#endif // DGL_USE_NVTX
 }
 
 void ServiceManager::am_recv_cb(void *arg, const void *buffer, size_t length) {
@@ -71,6 +74,9 @@ void ServiceManager::progress() {
 }
 
 void ServiceManager::run(ServiceManager *self) {
+#ifdef DGL_USE_NVTX
+  nvtxNameOsThread(syscall(SYS_gettid), "UCX Thread");
+#endif // DGL_USE_NVTX
   while (!self->shutdown) {
     self->progress();
   }

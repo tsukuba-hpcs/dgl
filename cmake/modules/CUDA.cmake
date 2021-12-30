@@ -281,7 +281,8 @@ macro(dgl_config_cuda out_variable)
     ${CUDA_CUDART_LIBRARY}
     ${CUDA_CUBLAS_LIBRARIES}
     ${CUDA_cusparse_LIBRARY}
-    ${CUDA_CURAND_LIBRARY})
+    ${CUDA_CURAND_LIBRARY}
+    ${CUDA_CUDA_LIBRARY})
 
   set(${out_variable} ${DGL_CUDA_SRC})
 endmacro()
