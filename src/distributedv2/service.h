@@ -29,14 +29,14 @@ namespace distributedv2 {
 
 class Service {
 public:
-  virtual void progress(Communicator *comm) = 0;
+  virtual unsigned progress(Communicator *comm) = 0;
 };
 
 class StubService: public Service {
 public:
   unsigned stub_id;
-  virtual void progress() = 0;
-  void progress(Communicator *comm) {
+  virtual unsigned progress() = 0;
+  unsigned progress(Communicator *comm) {
     progress();
   }
 };
@@ -73,7 +73,9 @@ class ServiceManager {
   static void rma_recv_cb(void *arg, uint64_t req_id, void *address);
   // for debugging
   size_t progress_counter = 0;
-  static constexpr size_t COUNTER_THRESHOLD = 1000000000;
+  size_t act_counter = 0;
+  static constexpr size_t COUNTER_THRESHOLD = 1000000;
+  static constexpr size_t YIELD_THRESHOLD = 1000;
 public:
   ServiceManager(int rank, int size, Communicator *comm);
   void add_stub_service(std::unique_ptr<StubService> &&serv);

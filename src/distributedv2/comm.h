@@ -146,7 +146,7 @@ public:
   void prepare_rma(void *rkeybuf, size_t rkeybuf_len, void *address, size_t address_len);
   void rma_read(int destrank, unsigned rma_id, uint64_t req_id, void *buffer, uint64_t offset, size_t length);
   // for Progress
-  void progress();
+  unsigned progress();
   static constexpr const char* _type_key = "distributedv2.Communicator";
   DGL_DECLARE_OBJECT_TYPE_INFO(Communicator, runtime::Object);
 };

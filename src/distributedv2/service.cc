@@ -1,6 +1,7 @@
 #include "service.h"
 
 #include <memory>
+#include <thread>
 
 namespace dgl {
 namespace distributedv2 {
@@ -64,12 +65,18 @@ void ServiceManager::add_stub_service(std::unique_ptr<StubService> &&serv) {
 
 void ServiceManager::progress() {
   for (auto &serv: servs) {
-    serv->progress(comm);
+    act_counter += serv->progress(comm);
   }
-  comm->progress();
+  act_counter += comm->progress();
   progress_counter++;
   if (progress_counter % COUNTER_THRESHOLD == 0) {
     LOG(INFO) << "rank=" << rank << " ServiceManager::progress()";
+  }
+  if (progress_counter % YIELD_THRESHOLD == 0) {
+    if (act_counter == 0) {
+      std::this_thread::yield();
+    }
+    act_counter = 0;
   }
 }
 

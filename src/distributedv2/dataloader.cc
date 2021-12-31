@@ -314,7 +314,7 @@ void NeighborSampler::am_recv(Communicator *comm, const void *buffer, size_t len
   }
 }
 
-void NeighborSampler::progress(Communicator *comm) {
+unsigned NeighborSampler::progress(Communicator *comm) {
   seed_with_label_t input;
   if (input_que->try_dequeue(input)) {
     CHECK(input.seeds->dtype.code == kDLInt);
@@ -331,7 +331,9 @@ void NeighborSampler::progress(Communicator *comm) {
     nvtxRangePop();
 #endif // DGL_USE_NVTX
     req_id += size;
+    return 1;
   }
+  return 0;
 }
 
 FeatLoader::FeatLoader(feat_loader_arg_t &&arg,
@@ -373,7 +375,7 @@ void FeatLoader::enqueue(uint64_t req_id) {
   output_que->enqueue(std::move(ret));
 }
 
-void FeatLoader::progress(Communicator *comm) {
+unsigned FeatLoader::progress(Communicator *comm) {
   if (!input_que->empty()) {
     blocks_with_label_t item = std::move(input_que->front());
     prog_que[req_id] = feat_loader_prog_t(std::move(item));
@@ -403,7 +405,9 @@ void FeatLoader::progress(Communicator *comm) {
       comm->rma_read(src_rank, rma_id, req_id, recv_buffer, offset, feats_row_size);
     }
     req_id += size;
+    return 1;
   }
+  return 0;
 }
 
 void FeatLoader::rma_read_cb(Communicator *comm, uint64_t req_id, void *buffer) {

@@ -371,8 +371,9 @@ unsigned Communicator::add_am_handler(void *arg, comm_am_cb_t cb) {
   return am_id;
 }
 
-void Communicator::progress() {
+unsigned Communicator::progress() {
   CHECK(state == CommState::READY);
+  unsigned int act = 0;
   for (unsigned am_id = 0; am_id < am_handlers.size(); am_id++) {
     for (int destrank = 0; destrank < size; destrank++) {
       if (chunks[destrank][am_id] == NULL) continue;
@@ -380,11 +381,12 @@ void Communicator::progress() {
       am_send(destrank, am_id, chunks[destrank][am_id]);
       chunks[destrank][am_id] = NULL;
     }
-    ucp_worker_progress(am_handlers[am_id].worker);
+    act += ucp_worker_progress(am_handlers[am_id].worker);
   }
   for (unsigned rma_id = 0; rma_id < rma_handlers.size(); rma_id++) {
-    ucp_worker_progress(rma_handlers[rma_id].worker);
+    act += ucp_worker_progress(rma_handlers[rma_id].worker);
   }
+  return act;
 }
 
 rma_pool_item_t::rma_pool_item_t(rma_handler_t *handler = NULL)

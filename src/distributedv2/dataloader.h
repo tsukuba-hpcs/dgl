@@ -109,7 +109,7 @@ public:
     BlockingConcurrentQueue<seed_with_label_t> *input_que,
     std::queue<blocks_with_label_t> *output_que);
   void am_recv(Communicator *comm, const void *buffer, size_t length);
-  void progress(Communicator *comm);
+  unsigned progress(Communicator *comm);
 };
 
 struct feat_loader_prog_t {
@@ -156,7 +156,7 @@ public:
   );
   std::pair<void *, size_t> served_buffer();
   void rma_read_cb(Communicator *comm, uint64_t req_id, void *buffer);
-  void progress(Communicator *comm);
+  unsigned progress(Communicator *comm);
 };
 
 struct node_dataloader_arg_t {
