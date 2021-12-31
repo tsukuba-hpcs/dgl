@@ -53,12 +53,12 @@ struct edge_shard_t {
 };
 
 struct neighbor_sampler_prog_t {
-  std::vector<node_id_t> seeds;
+  NDArray seeds;
   NDArray labels;
   std::vector<edges_t> edges;
   uint64_t ppt;
   neighbor_sampler_prog_t() : ppt(0) {}
-  neighbor_sampler_prog_t(int num_layers, std::vector<node_id_t> &&_seeds, NDArray &&_labels)
+  neighbor_sampler_prog_t(int num_layers, NDArray &&_seeds, NDArray &&_labels)
   : seeds(std::move(_seeds))
   , labels(std::move(_labels))
   , edges(num_layers)
@@ -67,6 +67,7 @@ struct neighbor_sampler_prog_t {
 
 struct blocks_with_label_t {
   std::vector<HeteroGraphPtr> blocks;
+  NDArray seeds;
   NDArray labels;
   std::vector<node_id_t> input_nodes;
 };
@@ -128,6 +129,7 @@ struct feat_loader_prog_t {
 struct blocks_with_feat_t {
   NDArray labels;
   NDArray feats;
+  NDArray seeds;
   std::vector<HeteroGraphPtr> blocks;
 };
 

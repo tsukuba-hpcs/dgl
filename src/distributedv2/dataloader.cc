@@ -238,13 +238,15 @@ void inline NeighborSampler::recv_query(Communicator *comm, uint16_t depth, uint
 }
 
 void inline NeighborSampler::enqueue(uint64_t req_id) {
-  blocks_with_label_t ret = {
-    .blocks = std::vector<HeteroGraphPtr>{},
-    .labels = std::move(prog_que[req_id].labels),
-  };
+  std::vector<node_id_t> nodes(prog_que[req_id].seeds.NumElements());
+  std::memcpy(&nodes[0], prog_que[req_id].seeds->data, sizeof(node_id_t) * prog_que[req_id].seeds.NumElements());
   HeteroGraphPtr a;
   std::vector<dgl::IdArray> b;
-  std::vector<node_id_t> nodes = std::move(prog_que[req_id].seeds);
+  blocks_with_label_t ret = {
+    .blocks = std::vector<HeteroGraphPtr>{},
+    .seeds = std::move(prog_que[req_id].seeds),
+    .labels = std::move(prog_que[req_id].labels),
+  };
   std::vector<IdArray> dst_nodes{IdArray::FromVector(nodes)};
   for (uint16_t depth = 0; depth < num_layers; depth++) {
     edges_t &edges = prog_que[req_id].edges[depth];
@@ -321,12 +323,12 @@ unsigned NeighborSampler::progress(Communicator *comm) {
     CHECK(input.seeds->dtype.bits == 8 * sizeof(node_id_t));
     std::vector<node_id_t> seeds(input.seeds.NumElements());
     std::memcpy(&seeds[0], input.seeds->data, sizeof(node_id_t) * input.seeds.NumElements());
-    prog_que[req_id] = neighbor_sampler_prog_t(num_layers, std::move(seeds), std::move(input.labels));
+    prog_que[req_id] = neighbor_sampler_prog_t(num_layers, std::move(input.seeds), std::move(input.labels));
 #ifdef DGL_USE_NVTX
   nvtxRangePush(__FUNCTION__);
   nvtxMark("NeighborSampler::progress(): Scatter");
 #endif // DGL_USE_NVTX
-    scatter(comm, 0, req_id, std::vector<node_id_t>(prog_que[req_id].seeds), PPT_ALL);
+    scatter(comm, 0, req_id, std::move(seeds), PPT_ALL);
 #ifdef DGL_USE_NVTX
     nvtxRangePop();
 #endif // DGL_USE_NVTX
@@ -365,11 +367,13 @@ std::pair<void *, size_t> FeatLoader::served_buffer() {
 void FeatLoader::enqueue(uint64_t req_id) {
   std::vector<dgl::HeteroGraphPtr> blocks = std::move(prog_que[req_id].inputs.blocks);
   NDArray labels = std::move(prog_que[req_id].inputs.labels);
+  NDArray seeds = std::move(prog_que[req_id].inputs.seeds);
   NDArray feats = std::move(prog_que[req_id].feats);
   prog_que.erase(req_id);
   blocks_with_feat_t ret = {
     .labels = std::move(labels),
     .feats = std::move(feats),
+    .seeds = std::move(seeds),
     .blocks = std::move(blocks),
   };
   output_que->enqueue(std::move(ret));
