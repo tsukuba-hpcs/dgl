@@ -10,12 +10,12 @@ namespace distributedv2 {
 
 using namespace dgl::runtime;
 
-Communicator::Communicator(int rank, int size, size_t buffer_len)
+Communicator::Communicator(int rank, int size,  size_t am_buffer_len, size_t rma_buffer_len)
 : state(CommState::INIT)
 , rank(rank)
 , size(size)
-, am_pool(buffer_len)
-, rma_pool(buffer_len) {
+, am_pool(am_buffer_len)
+, rma_pool(rma_buffer_len) {
   ucs_status_t status;
   ucp_params_t am_params = {
     .field_mask = UCP_PARAM_FIELD_FEATURES | UCP_PARAM_FIELD_ESTIMATED_NUM_EPS,
