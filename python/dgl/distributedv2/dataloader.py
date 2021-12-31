@@ -155,7 +155,7 @@ class NodeDataLoader(ObjectBase):
         assert self.pre_iter < self.num_batch * self.max_epoch
         l = self.batch_size * (self.pre_iter % self.num_batch)
         r = min(self.num_samples, l + self.batch_size)
-        _CAPI_DistV2EnqueueToNodeDataLoader(self, 
+        _CAPI_DistV2EnqueueToNodeDataLoader(self,
                 nd.from_dlpack(F.zerocopy_to_dlpack(F.zerocopy_from_numpy(self.indices[l:r]))),
                 nd.from_dlpack(F.zerocopy_to_dlpack(F.zerocopy_from_numpy(self.iter_labels[l:r]))))
         self.pre_iter += 1
