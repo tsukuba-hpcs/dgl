@@ -79,8 +79,8 @@ class NodeDataLoader(ObjectBase):
 
         temp_edges = None
 
-        # sort by dest node id.
-        recv_edges = recv_edges[recv_edges[:, 1].argsort()]
+        # sort by dest node id, then src node id.
+        recv_edges = recv_edges[np.lexsort((recv_edges[:,0], recv_edges[:,1]))]
 
         return recv_edges[:, 0], recv_edges[:, 1]
 

@@ -32,8 +32,8 @@ struct edge_elem_t {
     return src == rhs.src && dst == rhs.dst;
   }
   bool operator<(const edge_elem_t& rhs) const {
-    if (src != rhs.src) return src < rhs.src;
-    return dst < rhs.dst;
+    if (dst != rhs.dst) return dst < rhs.dst;
+    return src < rhs.src;
   }
 };
 

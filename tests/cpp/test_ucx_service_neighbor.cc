@@ -34,7 +34,7 @@ TEST_F(ServTest, EdgeShard1) {
   create_ep();
   dgl::IdArray edge0_src(dgl::aten::VecToIdArray(std::vector<int>{4,5},64))
                 ,edge0_dst(dgl::aten::VecToIdArray(std::vector<int>{0,0},64))
-                ,edge1_src(dgl::aten::VecToIdArray(std::vector<int>{3,2,1},64))
+                ,edge1_src(dgl::aten::VecToIdArray(std::vector<int>{2,3,1},64))
                 ,edge1_dst(dgl::aten::VecToIdArray(std::vector<int>{4,4,5},64));
   edge_shard_t shard0(std::move(edge0_src), std::move(edge0_dst), 0, 2, 6);
   edge_shard_t shard1(std::move(edge1_src), std::move(edge1_dst), 1, 2, 6);
@@ -56,8 +56,8 @@ TEST_F(ServTest, EdgeShard1) {
   ASSERT_EQ(src_ids, (node_id_t *)NULL);
   shard1.in_edges(&src_ids, &length, 4);
   ASSERT_EQ(length, 2);
-  ASSERT_EQ(src_ids[0], 3);
-  ASSERT_EQ(src_ids[1], 2);
+  ASSERT_EQ(src_ids[0], 2);
+  ASSERT_EQ(src_ids[1], 3);
   shard1.in_edges(&src_ids, &length, 5);
   ASSERT_EQ(length, 1);
   ASSERT_EQ(src_ids[0], 1);
@@ -122,23 +122,29 @@ TEST_F(ServTest, TEST1) {
   ASSERT_EQ(blocks[2]->NumVertices(1), 6); // [0, 1, 2, 3, 4, 5]
   // 4->0(1->0), 5->0(2->0)
   ASSERT_EQ(blocks[0]->NumEdges(0), 2);
-  // 2->4(2->1), 3->4(3->1), 1->5(1->2)
+  // 2->4(3->1), 3->4(4->1), 1->5(5->2)
   ASSERT_EQ(blocks[1]->NumEdges(0), 3);
-  // 5->1(5->1)
+  // 5->1(2->5)
   ASSERT_EQ(blocks[2]->NumEdges(0), 1);
+  /*
+  for (uint16_t depth = 0; depth < 3; depth++) {
+    auto e = blocks[depth]->Edges(0);
+    LOG(INFO) << e.src << e.dst;
+  }
+  */
   ASSERT_TRUE(blocks[0]->HasEdgeBetween(0, 1, 0)); // 4->0
   ASSERT_TRUE(blocks[0]->HasEdgeBetween(0, 2, 0)); // 5->0
-  ASSERT_TRUE(blocks[1]->HasEdgeBetween(0, 2, 1)); // 2->4
-  ASSERT_TRUE(blocks[1]->HasEdgeBetween(0, 3, 1)); // 3->4
-  ASSERT_TRUE(blocks[1]->HasEdgeBetween(0, 1, 2)); // 1->5
-  ASSERT_TRUE(blocks[2]->HasEdgeBetween(0, 5, 1)); // 5->1
+  ASSERT_TRUE(blocks[1]->HasEdgeBetween(0, 3, 1)); // 2->4
+  ASSERT_TRUE(blocks[1]->HasEdgeBetween(0, 4, 1)); // 3->4
+  ASSERT_TRUE(blocks[1]->HasEdgeBetween(0, 5, 2)); // 1->5
+  ASSERT_TRUE(blocks[2]->HasEdgeBetween(0, 2, 5)); // 5->1
   ASSERT_EQ(input_nodes.size(), 6);
   ASSERT_EQ(input_nodes[0], 0);
-  ASSERT_EQ(input_nodes[1], 1);
-  ASSERT_EQ(input_nodes[2], 2);
-  ASSERT_EQ(input_nodes[3], 3);
-  ASSERT_EQ(input_nodes[4], 4);
-  ASSERT_EQ(input_nodes[5], 5);
+  ASSERT_EQ(input_nodes[1], 4);
+  ASSERT_EQ(input_nodes[2], 5);
+  ASSERT_EQ(input_nodes[3], 2);
+  ASSERT_EQ(input_nodes[4], 3);
+  ASSERT_EQ(input_nodes[5], 1);
 }
 
 TEST_F(ServTest, KARATE_CLUB_1) {
@@ -538,7 +544,7 @@ TEST_F(ServTest, FANOUT_TEST1) {
   {
     dgl::IdArray edge0_src(dgl::aten::VecToIdArray(std::vector<int>{4,5},64))
                 ,edge0_dst(dgl::aten::VecToIdArray(std::vector<int>{0,0},64))
-                ,edge1_src(dgl::aten::VecToIdArray(std::vector<int>{3,2,1},64))
+                ,edge1_src(dgl::aten::VecToIdArray(std::vector<int>{2,3,1},64))
                 ,edge1_dst(dgl::aten::VecToIdArray(std::vector<int>{4,4,5},64));
     std::vector<int> fanouts{1,1};
     neighbor_sampler_arg_t arg0 = {

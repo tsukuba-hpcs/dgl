@@ -7,6 +7,7 @@
 #include <numeric>
 #include <random>
 #include <chrono>
+#include <algorithm>
 
 #include "../c_api_common.h"
 
@@ -53,6 +54,9 @@ edge_shard_t::edge_shard_t(NDArray &&_src, NDArray &&_dst, int rank, int size, u
     node_id_t dst_id0 = *(node_id_t *)PTR_BYTE_OFFSET(dst->data, sizeof(node_id_t) * (idx-1));
     node_id_t dst_id1 = *(node_id_t *)PTR_BYTE_OFFSET(dst->data, sizeof(node_id_t) * idx);
     CHECK(dst_id0 <= dst_id1);
+    node_id_t src_id0 = *(node_id_t *)PTR_BYTE_OFFSET(src->data, sizeof(node_id_t) * (idx-1));
+    node_id_t src_id1 = *(node_id_t *)PTR_BYTE_OFFSET(src->data, sizeof(node_id_t) * idx);
+    CHECK(dst_id0 < dst_id1 || src_id0 < src_id1);
   }
   offset.assign(node_slit + 1, src.NumElements());
   // edge where dst_id==k -> [offset[k], offset[k+1])
@@ -133,6 +137,7 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
   CHECK(ppt > 0);
   uint64_t rem_ppt = ppt;
   std::sort(seeds.begin(), seeds.end());
+  seeds.erase(std::unique(seeds.begin(), seeds.end()), seeds.end());
   std::minstd_rand0 engine(req_id ^ ppt ^ depth);
   uint32_t l, r = 0;
   for (uint16_t dstrank = 0; dstrank < size; dstrank++) {
@@ -160,6 +165,7 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
       size_t edge_len;
       node_id_t src;
       std::vector<node_id_t> next_seeds;
+      size_t prev_edges_len = prog_que[req_id].edges[depth].size();
       for (uint32_t dst_idx = l; dst_idx < r; dst_idx++) {
         edge_shard.in_edges(&src_ids, &edge_len, seeds[dst_idx]);
         // LOG(INFO) << "dst_idx= " << dst_idx << " edge_len=" << edge_len << "depth=" << depth << "fanouts[depth]= " << fanouts[depth];
@@ -177,6 +183,7 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
           for (uint32_t idx = edge_len-1; idx >= fanouts[depth]; idx--) {
             std::swap(seq[idx], seq[engine() % idx]);
           }
+          std::sort(seq.begin(), seq.begin() + fanouts[depth]);
           for (uint32_t idx = 0; idx < fanouts[depth]; idx++) {
             src = src_ids[seq[idx]];
             // LOG(INFO) << "self sample: idx=" << idx << " src=" << src << " dst=" << dst;
@@ -185,6 +192,10 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
           }
         }
       }
+      std::inplace_merge(
+        prog_que[req_id].edges[depth].begin(),
+        prog_que[req_id].edges[depth].begin() + prev_edges_len,
+        prog_que[req_id].edges[depth].end());
       // LOG(INFO) << "next_seeds.size()" << next_seeds.size();
       if (next_seeds.size() == 0 || depth + 1 == num_layers) {
         prog_que[req_id].ppt += cur_ppt;
@@ -218,6 +229,7 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
           for (uint32_t idx = edge_len-1; idx >= fanouts[depth]; idx--) {
             std::swap(seq[idx], seq[engine() % idx]);
           }
+          std::sort(seq.begin(), seq.begin() + fanouts[depth]);
           for (uint32_t idx = 0; idx < fanouts[depth]; idx++) {
             edge_elem_t elem{.src = src_ids[seq[idx]], .dst = seeds[dst_idx]};
             // LOG(INFO) << "other sample: idx=" << idx << " src=" << elem.src << " dst=" << elem.dst;
@@ -258,12 +270,11 @@ void inline NeighborSampler::enqueue(uint64_t req_id) {
   std::vector<IdArray> dst_nodes{IdArray::FromVector(nodes)};
   create_idarray_time += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - t1).count();
   for (uint16_t depth = 0; depth < num_layers; depth++) {
-    edges_t &edges = prog_que[req_id].edges[depth];
+    edges_t edges = std::move(prog_que[req_id].edges[depth]);
     auto t0 = std::chrono::system_clock::now();
-    std::sort(edges.begin(), edges.end());
-    edges.erase(std::unique(edges.begin(), edges.end()), edges.end());
+    auto edges_end = std::unique(edges.begin(), edges.end());
     erase_time += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - t0).count();
-    int64_t edges_len = (int64_t)edges.size();
+    int64_t edges_len = edges_end - edges.begin();
     CHECK(edges_len >= 0);
     auto t2 = std::chrono::system_clock::now();
     IdArray src = IdArray::Empty(std::vector<int64_t>{edges_len},  DLDataType{kDLInt, 8 * sizeof(node_id_t), 1}, DLContext{kDLCPU, 0});
@@ -281,10 +292,6 @@ void inline NeighborSampler::enqueue(uint64_t req_id) {
     auto t4 = std::chrono::system_clock::now();
     HeteroGraphPtr g = CreateFromCOO(1, edges_len, edges_len, src, dst, false, false);
     create_graph_time += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - t4).count();
-    auto t7 = std::chrono::system_clock::now();
-    std::sort(nodes.begin(), nodes.end());
-    nodes.erase(std::unique(nodes.begin(), nodes.end()), nodes.end());
-    erase_time += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - t7).count();
     auto t5 = std::chrono::system_clock::now();
     std::vector<IdArray> src_nodes{IdArray::FromVector(nodes)};
     create_idarray_time += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - t5).count();
@@ -295,7 +302,14 @@ void inline NeighborSampler::enqueue(uint64_t req_id) {
     dst_nodes = std::move(src_nodes);
   }
   std::reverse(ret.blocks.begin(), ret.blocks.end());
-  ret.input_nodes = std::move(nodes);
+  std::unordered_map<node_id_t, bool> used;
+  auto t7 = std::chrono::system_clock::now();
+  for (node_id_t node: nodes) {
+    if (used[node]) continue;
+    used[node] = true;
+    ret.input_nodes.push_back(node);
+  }
+  erase_time += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - t7).count();
   output_que->push(std::move(ret));
   prog_que.erase(req_id);
   /*
@@ -309,7 +323,9 @@ void inline NeighborSampler::enqueue(uint64_t req_id) {
 
 void inline NeighborSampler::recv_response(Communicator *comm, uint16_t depth, uint64_t ppt, uint64_t req_id, uint32_t len, const void *buffer) {
   edges_t &edges = prog_que[req_id].edges[depth];
+  size_t edges_len = edges.size();
   edges.insert(edges.end(), (edge_elem_t *)buffer, (edge_elem_t *)buffer + len);
+  std::inplace_merge(edges.begin(), edges.begin() + edges_len, edges.end());
   prog_que[req_id].ppt += ppt;
   // LOG(INFO) << "req_id=" << req_id << " ppt=" << ppt;
   if (prog_que[req_id].ppt == PPT_ALL) {
