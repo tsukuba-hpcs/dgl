@@ -74,8 +74,8 @@ class ServiceManager {
   // for debugging
   size_t progress_counter = 0;
   size_t act_counter = 0;
-  static constexpr size_t COUNTER_THRESHOLD = 1000000;
-  static constexpr size_t YIELD_THRESHOLD = 1000;
+  static constexpr size_t COUNTER_THRESHOLD = 100000000;
+  static constexpr size_t YIELD_THRESHOLD = 100000;
 public:
   ServiceManager(int rank, int size, Communicator *comm);
   void add_stub_service(std::unique_ptr<StubService> &&serv);

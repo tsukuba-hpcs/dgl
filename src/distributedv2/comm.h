@@ -132,7 +132,7 @@ class Communicator: public runtime::Object {
 public:
   const int rank;
   const int size;
-  Communicator(int rank, int size, size_t am_buffer_len = (1<<12), size_t rma_buffer_len = (1<<24));
+  Communicator(int rank, int size, size_t am_buffer_len = (1<<14), size_t rma_buffer_len = (1<<24));
   ~Communicator();
   // for Endpoints
   std::pair<void*, int> create_workers();
