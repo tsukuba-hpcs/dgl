@@ -19,6 +19,10 @@ static int64_t dequeue_time = -1;
 static int64_t build_block_time = 0;
 static int64_t self_scatter_time = 0;
 static int64_t handle_req_time = 0;
+static int64_t create_idarray_time = 0;
+static int64_t toblock_time = 0;
+static int64_t create_graph_time = 0;
+static int64_t edge_copy_time = 0;
 
 edge_shard_t::edge_shard_t(NDArray &&_src, NDArray &&_dst, int rank, int size, uint64_t num_nodes)
 : src(std::move(_src))
@@ -96,7 +100,11 @@ NeighborSampler::~NeighborSampler() {
     << " dequeue_time=" << dequeue_time
     << " build_block_time=" << build_block_time
     << " self_scatter_time=" << self_scatter_time
-    << " handle_req_time=" << handle_req_time;
+    << " handle_req_time=" << handle_req_time
+    << " create_idarray_time=" << create_idarray_time
+    << " toblock_time=" << toblock_time
+    << " create_graph_time" << create_graph_time
+    << " edge_copy_time" << edge_copy_time;
 }
 
 void inline NeighborSampler::send_query(Communicator *comm, uint16_t dstrank, uint16_t depth, uint64_t req_id, node_id_t *nodes, uint32_t len, uint64_t ppt) {
@@ -257,27 +265,39 @@ void inline NeighborSampler::enqueue(uint64_t req_id) {
     .seeds = std::move(prog_que[req_id].seeds),
     .labels = std::move(prog_que[req_id].labels),
   };
+  auto t1 = std::chrono::system_clock::now();
   std::vector<IdArray> dst_nodes{IdArray::FromVector(nodes)};
+  create_idarray_time += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - t1).count();
   for (uint16_t depth = 0; depth < num_layers; depth++) {
     edges_t &edges = prog_que[req_id].edges[depth];
     std::sort(edges.begin(), edges.end());
     edges.erase(std::unique(edges.begin(), edges.end()), edges.end());
     int64_t edges_len = (int64_t)edges.size();
     CHECK(edges_len >= 0);
+    auto t2 = std::chrono::system_clock::now();
     IdArray src = IdArray::Empty(std::vector<int64_t>{edges_len},  DLDataType{kDLInt, 8 * sizeof(node_id_t), 1}, DLContext{kDLCPU, 0});
     IdArray dst = IdArray::Empty(std::vector<int64_t>{edges_len},  DLDataType{kDLInt, 8 * sizeof(node_id_t), 1}, DLContext{kDLCPU, 0});
+    create_idarray_time += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - t2).count();
+    auto t3 = std::chrono::system_clock::now();
     for (int64_t idx = 0; idx < edges_len; idx++) {
       *(node_id_t *)PTR_BYTE_OFFSET(src->data, sizeof(node_id_t) * idx) = edges[idx].src;
       *(node_id_t *)PTR_BYTE_OFFSET(dst->data, sizeof(node_id_t) * idx) = edges[idx].dst;
     }
+    edge_copy_time += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - t3).count();
     for (edge_elem_t edge: edges) {
       nodes.push_back(edge.src);
     }
+    auto t4 = std::chrono::system_clock::now();
     HeteroGraphPtr g = CreateFromCOO(1, edges_len, edges_len, src, dst, false, false);
+    create_graph_time += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - t4).count();
     std::sort(nodes.begin(), nodes.end());
     nodes.erase(std::unique(nodes.begin(), nodes.end()), nodes.end());
+    auto t5 = std::chrono::system_clock::now();
     std::vector<IdArray> src_nodes{IdArray::FromVector(nodes)};
+    create_idarray_time += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - t5).count();
+    auto t6 = std::chrono::system_clock::now();
     std::tie(a, b) = transform::ToBlock<kDLCPU, node_id_t>(g, dst_nodes, true, &src_nodes);
+    toblock_time += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - t6).count();
     ret.blocks.push_back(std::move(a));
     dst_nodes = std::move(src_nodes);
   }
