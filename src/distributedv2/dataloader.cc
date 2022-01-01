@@ -91,6 +91,14 @@ NeighborSampler::NeighborSampler(neighbor_sampler_arg_t &&arg,
   }
 }
 
+NeighborSampler::~NeighborSampler() {
+  LOG(INFO) << "rank=" << rank
+    << " dequeue_time=" << dequeue_time
+    << " build_block_time=" << build_block_time
+    << " self_scatter_time=" << self_scatter_time
+    << " handle_req_time=" << handle_req_time;
+}
+
 void inline NeighborSampler::send_query(Communicator *comm, uint16_t dstrank, uint16_t depth, uint64_t req_id, node_id_t *nodes, uint32_t len, uint64_t ppt) {
   size_t data_len = HEADER_LEN + len * sizeof(node_id_t);
   size_t offset = 0;
@@ -320,7 +328,7 @@ void NeighborSampler::am_recv(Communicator *comm, const void *buffer, size_t len
     CHECK(offset + sizeof(node_id_t) * data_length == length);
   }
   auto rend = std::chrono::system_clock::now();
-  handle_req_time += std::chrono::duration_cast<std::chrono::milliseconds>(rend - rstart).count(); 
+  handle_req_time += std::chrono::duration_cast<std::chrono::milliseconds>(rend - rstart).count();
 }
 
 unsigned NeighborSampler::progress(Communicator *comm) {
@@ -342,7 +350,7 @@ unsigned NeighborSampler::progress(Communicator *comm) {
 #endif // DGL_USE_NVTX
     req_id += size;
     auto send = std::chrono::system_clock::now();
-    self_scatter_time += std::chrono::duration_cast<std::chrono::milliseconds>(send - sstart).count(); 
+    self_scatter_time += std::chrono::duration_cast<std::chrono::milliseconds>(send - sstart).count();
     return 1;
   }
   return 0;
@@ -564,11 +572,6 @@ DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2TermNodeDataLoader")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
   NodeDataLoaderRef loader = args[0];
   loader->terminate();
-  LOG(INFO) 
-    << " dequeue_time=" << dequeue_time
-    << " build_block_time=" << build_block_time
-    << " self_scatter_time=" << self_scatter_time
-    << " handle_req_time=" << handle_req_time;
 });
 
 }
