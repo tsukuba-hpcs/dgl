@@ -23,6 +23,7 @@ static int64_t create_idarray_time = 0;
 static int64_t toblock_time = 0;
 static int64_t create_graph_time = 0;
 static int64_t edge_copy_time = 0;
+static int64_t erase_time = 0;
 
 edge_shard_t::edge_shard_t(NDArray &&_src, NDArray &&_dst, int rank, int size, uint64_t num_nodes)
 : src(std::move(_src))
@@ -258,8 +259,10 @@ void inline NeighborSampler::enqueue(uint64_t req_id) {
   create_idarray_time += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - t1).count();
   for (uint16_t depth = 0; depth < num_layers; depth++) {
     edges_t &edges = prog_que[req_id].edges[depth];
+    auto t0 = std::chrono::system_clock::now();
     std::sort(edges.begin(), edges.end());
     edges.erase(std::unique(edges.begin(), edges.end()), edges.end());
+    erase_time += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - t0).count();
     int64_t edges_len = (int64_t)edges.size();
     CHECK(edges_len >= 0);
     auto t2 = std::chrono::system_clock::now();
@@ -278,8 +281,10 @@ void inline NeighborSampler::enqueue(uint64_t req_id) {
     auto t4 = std::chrono::system_clock::now();
     HeteroGraphPtr g = CreateFromCOO(1, edges_len, edges_len, src, dst, false, false);
     create_graph_time += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - t4).count();
+    auto t7 = std::chrono::system_clock::now();
     std::sort(nodes.begin(), nodes.end());
     nodes.erase(std::unique(nodes.begin(), nodes.end()), nodes.end());
+    erase_time += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - t7).count();
     auto t5 = std::chrono::system_clock::now();
     std::vector<IdArray> src_nodes{IdArray::FromVector(nodes)};
     create_idarray_time += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - t5).count();
@@ -588,7 +593,8 @@ DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2TermNodeDataLoader")
     << " create_idarray_time=" << create_idarray_time
     << " toblock_time=" << toblock_time
     << " create_graph_time" << create_graph_time
-    << " edge_copy_time" << edge_copy_time;
+    << " edge_copy_time" << edge_copy_time
+    << " erase_time=" << erase_time;
 });
 
 }
