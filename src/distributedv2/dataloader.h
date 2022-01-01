@@ -110,7 +110,6 @@ public:
     BlockingConcurrentQueue<seed_with_label_t> *input_que,
     std::queue<blocks_with_label_t> *output_que);
   void am_recv(Communicator *comm, const void *buffer, size_t length);
-  ~NeighborSampler();
   unsigned progress(Communicator *comm);
 };
 

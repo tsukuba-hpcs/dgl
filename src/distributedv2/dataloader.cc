@@ -95,18 +95,6 @@ NeighborSampler::NeighborSampler(neighbor_sampler_arg_t &&arg,
   }
 }
 
-NeighborSampler::~NeighborSampler() {
-  LOG(INFO) << "rank=" << rank
-    << " dequeue_time=" << dequeue_time
-    << " build_block_time=" << build_block_time
-    << " self_scatter_time=" << self_scatter_time
-    << " handle_req_time=" << handle_req_time
-    << " create_idarray_time=" << create_idarray_time
-    << " toblock_time=" << toblock_time
-    << " create_graph_time" << create_graph_time
-    << " edge_copy_time" << edge_copy_time;
-}
-
 void inline NeighborSampler::send_query(Communicator *comm, uint16_t dstrank, uint16_t depth, uint64_t req_id, node_id_t *nodes, uint32_t len, uint64_t ppt) {
   size_t data_len = HEADER_LEN + len * sizeof(node_id_t);
   size_t offset = 0;
@@ -592,6 +580,15 @@ DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2TermNodeDataLoader")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
   NodeDataLoaderRef loader = args[0];
   loader->terminate();
+  LOG(INFO)
+    << " dequeue_time=" << dequeue_time
+    << " build_block_time=" << build_block_time
+    << " self_scatter_time=" << self_scatter_time
+    << " handle_req_time=" << handle_req_time
+    << " create_idarray_time=" << create_idarray_time
+    << " toblock_time=" << toblock_time
+    << " create_graph_time" << create_graph_time
+    << " edge_copy_time" << edge_copy_time;
 });
 
 }
