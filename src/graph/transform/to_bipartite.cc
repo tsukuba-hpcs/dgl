@@ -122,7 +122,7 @@ ToBlockCPU(HeteroGraphPtr graph, const std::vector<IdArray> &rhs_nodes,
           << " destination nodes.";
       aten::CSRMatrix csr = aten::COOToCSR(aten::COOMatrix(
         lhs_map.Size(), rhs_map.Size(), new_src, new_dst,
-        NullArray(), true, true));
+        NullArray(), false, false));
       rel_graphs.push_back(CreateFromCSR(2, csr));
       induced_edges.push_back(edge_arrays[etype].id);
     }
