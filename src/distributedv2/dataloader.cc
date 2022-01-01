@@ -17,7 +17,8 @@ using namespace dgl::runtime;
 
 static int64_t dequeue_time = -1;
 static int64_t build_block_time = 0;
-static int64_t build_ret_time = 0;
+static int64_t self_scatter_time = 0;
+static int64_t handle_req_time = 0;
 
 edge_shard_t::edge_shard_t(NDArray &&_src, NDArray &&_dst, int rank, int size, uint64_t num_nodes)
 : src(std::move(_src))
@@ -238,6 +239,7 @@ void inline NeighborSampler::recv_query(Communicator *comm, uint16_t depth, uint
 }
 
 void inline NeighborSampler::enqueue(uint64_t req_id) {
+  auto bstart = std::chrono::system_clock::now();
   std::vector<node_id_t> nodes(prog_que[req_id].seeds.NumElements());
   std::memcpy(&nodes[0], prog_que[req_id].seeds->data, sizeof(node_id_t) * prog_que[req_id].seeds.NumElements());
   HeteroGraphPtr a;
@@ -280,6 +282,8 @@ void inline NeighborSampler::enqueue(uint64_t req_id) {
     << ",total_edges=" << total_edges
     << ",prog_que.size()=" << prog_que.size();
   */
+  auto bend = std::chrono::system_clock::now();
+  build_block_time += std::chrono::duration_cast<std::chrono::milliseconds>(bend - bstart).count();
 }
 
 void inline NeighborSampler::recv_response(Communicator *comm, uint16_t depth, uint64_t ppt, uint64_t req_id, uint32_t len, const void *buffer) {
@@ -298,6 +302,7 @@ void NeighborSampler::am_recv(Communicator *comm, const void *buffer, size_t len
   uint16_t depth;
   uint32_t data_length;
   uint64_t ppt;
+  auto rstart = std::chrono::system_clock::now();
   shifted_id = *(uint64_t *)PTR_BYTE_OFFSET(buffer, offset);
   offset += sizeof(uint64_t);
   ppt = *(uint64_t *)PTR_BYTE_OFFSET(buffer, offset);
@@ -314,6 +319,8 @@ void NeighborSampler::am_recv(Communicator *comm, const void *buffer, size_t len
     recv_query(comm, depth, ppt, shifted_id>>1, data_length, PTR_BYTE_OFFSET(buffer, offset));
     CHECK(offset + sizeof(node_id_t) * data_length == length);
   }
+  auto rend = std::chrono::system_clock::now();
+  handle_req_time += std::chrono::duration_cast<std::chrono::milliseconds>(rend - rstart).count(); 
 }
 
 unsigned NeighborSampler::progress(Communicator *comm) {
@@ -321,6 +328,7 @@ unsigned NeighborSampler::progress(Communicator *comm) {
   if (input_que->try_dequeue(input)) {
     CHECK(input.seeds->dtype.code == kDLInt);
     CHECK(input.seeds->dtype.bits == 8 * sizeof(node_id_t));
+    auto sstart = std::chrono::system_clock::now();
     std::vector<node_id_t> seeds(input.seeds.NumElements());
     std::memcpy(&seeds[0], input.seeds->data, sizeof(node_id_t) * input.seeds.NumElements());
     prog_que[req_id] = neighbor_sampler_prog_t(num_layers, std::move(input.seeds), std::move(input.labels));
@@ -333,6 +341,8 @@ unsigned NeighborSampler::progress(Communicator *comm) {
     nvtxRangePop();
 #endif // DGL_USE_NVTX
     req_id += size;
+    auto send = std::chrono::system_clock::now();
+    self_scatter_time += std::chrono::duration_cast<std::chrono::milliseconds>(send - sstart).count(); 
     return 1;
   }
   return 0;
@@ -518,13 +528,9 @@ DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2DequeueToNodeDataLoader")
   for (size_t depth = 0; depth < item.blocks.size(); depth++) {
     blocks.push_back(Value(MakeValue(HeteroGraphRef(item.blocks[depth]))));
   }
-  auto bend = std::chrono::system_clock::now();
-  build_block_time += std::chrono::duration_cast<std::chrono::milliseconds>(bend - dend).count();
   ret.push_back(Value(MakeValue(std::move(blocks))));
   ret.push_back(Value(MakeValue(std::move(item.labels))));
   ret.push_back(Value(MakeValue(std::move(item.feats))));
-  auto rend = std::chrono::system_clock::now();
-  build_ret_time += std::chrono::duration_cast<std::chrono::milliseconds>(rend - bend).count();
   *rv = ret;
 });
 
@@ -558,7 +564,11 @@ DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2TermNodeDataLoader")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
   NodeDataLoaderRef loader = args[0];
   loader->terminate();
-  LOG(INFO) << "dequeue_time=" << dequeue_time << " build_block_time=" << build_block_time << " build_ret_time=" << build_ret_time;
+  LOG(INFO) 
+    << " dequeue_time=" << dequeue_time
+    << " build_block_time=" << build_block_time
+    << " self_scatter_time=" << self_scatter_time
+    << " handle_req_time=" << handle_req_time;
 });
 
 }
