@@ -504,6 +504,9 @@ void NodeDataLoader::enqueue(seed_with_label_t &&item) {
 }
 
 void NodeDataLoader::dequeue(blocks_with_feat_t &item) {
+  if (output_que.size_approx() == 0) {
+    LOG(INFO) << "rank=" << rank << " might be starved in dequeue";
+  }
   output_que.wait_dequeue(item);
 }
 
