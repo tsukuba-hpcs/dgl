@@ -25,6 +25,7 @@ static int64_t toblock_time = 0;
 static int64_t create_graph_time = 0;
 static int64_t edge_copy_time = 0;
 static int64_t erase_time = 0;
+static int64_t memcpy_time = 0;
 
 edge_shard_t::edge_shard_t(NDArray &&_src, NDArray &&_dst, int rank, int size, uint64_t num_nodes)
 : src(std::move(_src))
@@ -428,6 +429,7 @@ void FeatLoader::enqueue(uint64_t req_id) {
 
 unsigned FeatLoader::progress(Communicator *comm) {
   if (!input_que->empty()) {
+    auto sstart = std::chrono::system_clock::now();
     blocks_with_label_t item = std::move(input_que->front());
     prog_que[req_id] = feat_loader_prog_t(std::move(item));
     input_que->pop();
@@ -456,6 +458,7 @@ unsigned FeatLoader::progress(Communicator *comm) {
       comm->rma_read(src_rank, rma_id, req_id, recv_buffer, offset, feats_row_size);
     }
     req_id += size;
+    memcpy_time += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - sstart).count();
     return 1;
   }
   return 0;
@@ -611,7 +614,8 @@ DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2TermNodeDataLoader")
     << " toblock_time=" << toblock_time
     << " create_graph_time" << create_graph_time
     << " edge_copy_time" << edge_copy_time
-    << " erase_time=" << erase_time;
+    << " erase_time=" << erase_time
+    << " memcpy_time=" << memcpy_time;
 });
 
 }
