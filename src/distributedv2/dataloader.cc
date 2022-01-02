@@ -184,14 +184,14 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
           }
         } else {
           // sampling
-          auto mstart = std::chrono::system_clock::now();
+          // auto mstart = std::chrono::system_clock::now();
           std::vector<uint32_t> seq(edge_len);
           std::iota(seq.begin(), seq.end(), 0);
           for (uint32_t idx = edge_len-1; idx >= fanouts[depth]; idx--) {
             std::swap(seq[idx], seq[engine() % idx]);
           }
           std::sort(seq.begin(), seq.begin() + fanouts[depth]);
-          memcpy_time += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - mstart).count();
+          // memcpy_time += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - mstart).count();
           for (uint32_t idx = 0; idx < fanouts[depth]; idx++) {
             src = src_ids[seq[idx]];
             // LOG(INFO) << "self sample: idx=" << idx << " src=" << src << " dst=" << dst;
@@ -232,14 +232,14 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
           }
         } else {
           // sampling
-          auto mstart = std::chrono::system_clock::now();
+          // auto mstart = std::chrono::system_clock::now();
           std::vector<uint32_t> seq(edge_len);
           std::iota(seq.begin(), seq.end(), 0);
           for (uint32_t idx = edge_len-1; idx >= fanouts[depth]; idx--) {
             std::swap(seq[idx], seq[engine() % idx]);
           }
           std::sort(seq.begin(), seq.begin() + fanouts[depth]);
-          memcpy_time += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - mstart).count();
+          // memcpy_time += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - mstart).count();
           for (uint32_t idx = 0; idx < fanouts[depth]; idx++) {
             edge_elem_t elem{.src = src_ids[seq[idx]], .dst = seeds[dst_idx]};
             // LOG(INFO) << "other sample: idx=" << idx << " src=" << elem.src << " dst=" << elem.dst;
