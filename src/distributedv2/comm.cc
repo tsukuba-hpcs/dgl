@@ -3,12 +3,16 @@
 #include <dgl/runtime/container.h>
 #include <dgl/packed_func_ext.h>
 
+#include <chrono>
+
 #include "../c_api_common.h"
 
 namespace dgl {
 namespace distributedv2 {
 
 using namespace dgl::runtime;
+
+static int64_t comm_progress_time = 0;
 
 Communicator::Communicator(int rank, int size,  size_t am_buffer_len, size_t rma_buffer_len)
 : state(CommState::INIT)
@@ -160,6 +164,9 @@ void Communicator::create_endpoints(void *addrs, size_t length) {
 
 Communicator::~Communicator() {
   CHECK(state == CommState::READY);
+  LOG(INFO)
+    << " rank=" << rank
+    << " comm_progress_time=" << comm_progress_time;
   ucs_status_t status;
   ucs_status_ptr_t req;
   ucp_request_param_t params = {
@@ -373,6 +380,7 @@ unsigned Communicator::add_am_handler(void *arg, comm_am_cb_t cb) {
 
 unsigned Communicator::progress() {
   CHECK(state == CommState::READY);
+  auto start = std::chrono::system_clock::now();
   unsigned int act = 0;
   for (unsigned am_id = 0; am_id < am_handlers.size(); am_id++) {
     for (int destrank = 0; destrank < size; destrank++) {
@@ -386,6 +394,7 @@ unsigned Communicator::progress() {
   for (unsigned rma_id = 0; rma_id < rma_handlers.size(); rma_id++) {
     act += ucp_worker_progress(rma_handlers[rma_id].worker);
   }
+  comm_progress_time += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - start).count();
   return act;
 }
 
