@@ -176,6 +176,7 @@ class NodeDataLoader: public ServiceManager, public runtime::Object {
   std::queue<blocks_with_label_t> bridge_que;
   BlockingConcurrentQueue<blocks_with_feat_t> output_que;
 public:
+  const int rank, size;
   static constexpr const char* _type_key = "distributedv2.NodeDataLoader";
   NodeDataLoader(Communicator *comm, node_dataloader_arg_t &&arg);
   void enqueue(seed_with_label_t &&item);

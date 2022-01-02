@@ -475,7 +475,7 @@ void FeatLoader::rma_read_cb(Communicator *comm, uint64_t req_id, void *buffer) 
 
 
 NodeDataLoader::NodeDataLoader(Communicator *comm, node_dataloader_arg_t &&arg)
-: ServiceManager(arg.rank, arg.size, comm) {
+: ServiceManager(arg.rank, arg.size, comm), rank(arg.rank), size(arg.size) {
   neighbor_sampler_arg_t arg0 = {
     .rank = arg.rank,
     .size = arg.size,
@@ -602,6 +602,7 @@ DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2TermNodeDataLoader")
   NodeDataLoaderRef loader = args[0];
   loader->terminate();
   LOG(INFO)
+    << " rank=" << loader->rank
     << " dequeue_time=" << dequeue_time
     << " build_block_time=" << build_block_time
     << " self_scatter_time=" << self_scatter_time
