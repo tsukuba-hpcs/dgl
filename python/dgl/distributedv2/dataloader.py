@@ -106,12 +106,23 @@ class NodeDataLoader(ObjectBase):
 
     def __setup(self, edges, feats):
         from mpi4py import MPI
-        self.comm = Communicator(MPI.COMM_WORLD)
+        self.world_rank = MPI.COMM_WORLD.Get_rank()
+        self.world_size = MPI.COMM_WORLD.Get_size()
+        local_comm = None
+        if self.procs_per_data <= 0:
+            local_comm = MPI.COMM_WORLD
+        else:
+            assert self.world_size >= self.procs_per_data
+            assert self.world_size % self.procs_per_data == 0
+            color = self.world_rank // self.procs_per_data
+            key = self.world_rank % self.procs_per_data
+            local_comm = MPI.COMM_WORLD.Split(color, key)
+        self.comm = Communicator(local_comm)
         self.node_slit = (self.num_nodes + self.comm.size - 1) // self.comm.size
         self.local_feats = self.__load_feats(self.comm.rank, self.node_slit, feats)
-        src, dst = self.__create_edgeshard(MPI.COMM_WORLD, edges)
-        self.num_samples = len(self.dataset) // self.comm.size
-        self.total_size = self.num_samples * self.comm.size
+        src, dst = self.__create_edgeshard(local_comm, edges)
+        self.num_samples = len(self.dataset) // self.world_size
+        self.total_size = self.num_samples * self.world_size
         self.num_batch = (self.num_samples + self.batch_size - 1) // self.batch_size
         assert self.prefetch <= self.num_batch * self.max_epoch
         self.__init_handle_by_constructor__(
@@ -124,11 +135,11 @@ class NodeDataLoader(ObjectBase):
             nd.from_dlpack(F.zerocopy_to_dlpack(F.zerocopy_from_numpy(src))),
             nd.from_dlpack(F.zerocopy_to_dlpack(F.zerocopy_from_numpy(dst)))
         )
-        self.comm.create_endpoints(MPI.COMM_WORLD)
-        rkeybufs, addrs = self.__gather_feat_metadata(MPI.COMM_WORLD)
+        self.comm.create_endpoints(local_comm)
+        rkeybufs, addrs = self.__gather_feat_metadata(local_comm)
         _CAPI_DistV2PrepareRMAService(self, rkeybufs, addrs)
 
-    def __init__(self, dataset, num_layers, edges, feats, labels, max_epoch, fanouts = None, batch_size = 1000, prefetch = 5, seed = 777):
+    def __init__(self, dataset, num_layers, edges, feats, labels, max_epoch, fanouts = None, batch_size = 1000, prefetch = 5, seed = 777, procs_per_data = 0):
         self.num_layers = num_layers
         self.labels = labels[:]
         self.dataset = dataset[:]
@@ -140,6 +151,7 @@ class NodeDataLoader(ObjectBase):
             self.fanouts = fanouts
         else:
             self.fanouts = [-1] * self.num_layers
+        self.procs_per_data = procs_per_data
         self.batch_size = batch_size
         self.epoch = 0
         self.seed = seed
@@ -164,7 +176,7 @@ class NodeDataLoader(ObjectBase):
 
     def __reset(self):
         g = np.random.default_rng(self.seed + (self.pre_iter // self.num_batch))
-        self.indices = self.dataset[g.permutation(len(self.dataset))[self.comm.rank:self.total_size:self.comm.size]]
+        self.indices = self.dataset[g.permutation(len(self.dataset))[self.world_rank:self.total_size:self.world_size]]
         self.iter_labels = self.labels[self.indices]
 
     def __iter__(self):
