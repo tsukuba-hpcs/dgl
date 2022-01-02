@@ -21,7 +21,7 @@ typedef void (*comm_am_cb_t)(void *arg, const void *buffer, size_t length);
 
 typedef void (*comm_rma_cb_t)(void *arg, uint64_t req_id, void *address);
 
-#define MAX_IOV_CNT 16
+#define MAX_IOV_CNT 8
 
 #define PTR_BYTE_OFFSET UCS_PTR_BYTE_OFFSET
 
@@ -132,7 +132,7 @@ class Communicator: public runtime::Object {
 public:
   const int rank;
   const int size;
-  Communicator(int rank, int size, size_t am_buffer_len = (1<<14), size_t rma_buffer_len = (1<<24));
+  Communicator(int rank, int size, size_t am_buffer_len = (1<<16), size_t rma_buffer_len = (1<<24));
   ~Communicator();
   // for Endpoints
   std::pair<void*, int> create_workers();
