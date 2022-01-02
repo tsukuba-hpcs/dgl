@@ -105,6 +105,7 @@ NeighborSampler::NeighborSampler(neighbor_sampler_arg_t &&arg,
 void inline NeighborSampler::send_query(Communicator *comm, uint16_t dstrank, uint16_t depth, uint64_t req_id, node_id_t *nodes, uint32_t len, uint64_t ppt) {
   size_t data_len = HEADER_LEN + len * sizeof(node_id_t);
   size_t offset = 0;
+  auto mstart = std::chrono::system_clock::now();
   std::unique_ptr<uint8_t[]> data = std::unique_ptr<uint8_t[]>(new uint8_t[data_len]);
   *(uint64_t *)PTR_BYTE_OFFSET(data.get(), offset) = (req_id<<1);
   offset += sizeof(uint64_t);
@@ -115,6 +116,7 @@ void inline NeighborSampler::send_query(Communicator *comm, uint16_t dstrank, ui
   *(uint32_t *)PTR_BYTE_OFFSET(data.get(), offset) = len;
   offset += sizeof(uint32_t);
   std::memcpy(PTR_BYTE_OFFSET(data.get(), offset), nodes, len * sizeof(node_id_t));
+  memcpy_time += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - mstart).count();
   comm->am_post(dstrank, am_id, std::move(data), data_len);
 }
 
@@ -122,6 +124,7 @@ void inline NeighborSampler::send_response(Communicator *comm, uint16_t depth, u
   uint16_t dstrank = req_id % size;
   size_t data_len = HEADER_LEN + len * sizeof(edge_elem_t);
   size_t offset = 0;
+  auto mstart = std::chrono::system_clock::now();
   std::unique_ptr<uint8_t[]> data = std::unique_ptr<uint8_t[]>(new uint8_t[data_len]);
   *(uint64_t *)PTR_BYTE_OFFSET(data.get(), offset) = (req_id<<1) + 1;
   offset += sizeof(uint64_t);
@@ -132,6 +135,7 @@ void inline NeighborSampler::send_response(Communicator *comm, uint16_t depth, u
   *(uint32_t *)PTR_BYTE_OFFSET(data.get(), offset) = len;
   offset += sizeof(uint32_t);
   std::memcpy(PTR_BYTE_OFFSET(data.get(), offset), edges, len * sizeof(edge_elem_t));
+  memcpy_time += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - mstart).count();
   comm->am_post(dstrank, am_id, std::move(data), data_len);
 }
 
@@ -180,12 +184,14 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
           }
         } else {
           // sampling
+          auto mstart = std::chrono::system_clock::now();
           std::vector<uint32_t> seq(edge_len);
           std::iota(seq.begin(), seq.end(), 0);
           for (uint32_t idx = edge_len-1; idx >= fanouts[depth]; idx--) {
             std::swap(seq[idx], seq[engine() % idx]);
           }
           std::sort(seq.begin(), seq.begin() + fanouts[depth]);
+          memcpy_time += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - mstart).count();
           for (uint32_t idx = 0; idx < fanouts[depth]; idx++) {
             src = src_ids[seq[idx]];
             // LOG(INFO) << "self sample: idx=" << idx << " src=" << src << " dst=" << dst;
@@ -226,12 +232,14 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
           }
         } else {
           // sampling
+          auto mstart = std::chrono::system_clock::now();
           std::vector<uint32_t> seq(edge_len);
           std::iota(seq.begin(), seq.end(), 0);
           for (uint32_t idx = edge_len-1; idx >= fanouts[depth]; idx--) {
             std::swap(seq[idx], seq[engine() % idx]);
           }
           std::sort(seq.begin(), seq.begin() + fanouts[depth]);
+          memcpy_time += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - mstart).count();
           for (uint32_t idx = 0; idx < fanouts[depth]; idx++) {
             edge_elem_t elem{.src = src_ids[seq[idx]], .dst = seeds[dst_idx]};
             // LOG(INFO) << "other sample: idx=" << idx << " src=" << elem.src << " dst=" << elem.dst;
