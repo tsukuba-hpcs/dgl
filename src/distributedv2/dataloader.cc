@@ -20,6 +20,7 @@ static int64_t dequeue_time = -1;
 static int64_t build_block_time = 0;
 static int64_t self_scatter_time = 0;
 static int64_t handle_req_time = 0;
+static int64_t recv_query_time = 0;
 static int64_t create_idarray_time = 0;
 static int64_t toblock_time = 0;
 static int64_t create_graph_time = 0;
@@ -251,8 +252,10 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
 }
 
 void inline NeighborSampler::recv_query(Communicator *comm, uint16_t depth, uint64_t ppt, uint64_t req_id, uint32_t len, const void *buffer) {
+  auto mstart = std::chrono::system_clock::now();
   std::vector<node_id_t> seeds(len);
   std::memcpy(seeds.data(), buffer, sizeof(node_id_t) * len);
+  memcpy_time += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - mstart).count();
   scatter(comm, depth, req_id, std::move(seeds), ppt);
 }
 
@@ -354,8 +357,10 @@ void NeighborSampler::am_recv(Communicator *comm, const void *buffer, size_t len
     recv_response(comm, depth, ppt, shifted_id>>1, data_length, PTR_BYTE_OFFSET(buffer, offset));
     CHECK(offset + sizeof(edge_elem_t) * data_length == length);
   } else {
+    auto qstart = std::chrono::system_clock::now();
     recv_query(comm, depth, ppt, shifted_id>>1, data_length, PTR_BYTE_OFFSET(buffer, offset));
     CHECK(offset + sizeof(node_id_t) * data_length == length);
+    recv_query_time += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - qstart).count();
   }
   auto rend = std::chrono::system_clock::now();
   handle_req_time += std::chrono::duration_cast<std::chrono::milliseconds>(rend - rstart).count();
@@ -613,6 +618,7 @@ DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2TermNodeDataLoader")
     << " build_block_time=" << build_block_time
     << " self_scatter_time=" << self_scatter_time
     << " handle_req_time=" << handle_req_time
+    << " recv_query_time=" << recv_query_time
     << " create_idarray_time=" << create_idarray_time
     << " toblock_time=" << toblock_time
     << " create_graph_time" << create_graph_time
