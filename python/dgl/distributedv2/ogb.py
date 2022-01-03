@@ -126,33 +126,37 @@ def npy2mmap(base_path: str, name: str):
     # num_node
     num_node = np.load(path.join(base_path, 'raw/num_nodes_list.npy'))
     assert num_node.dtype == np.int64
+    print('num_node', num_node)
     assert num_node.shape == (1,), "num_node shape must be (1,)"
+    num_node = num_node[0]
     num_node_fp = np.memmap(path.join(base_path, 'raw/num-node-list.dat'), mode='w+', dtype='int64', shape=(1,))
     num_node_fp[:] = num_node
 
     # num_edge
     num_edge = np.load(path.join(base_path, 'raw/num_edges_list.npy'))
     assert num_edge.dtype == np.int64
+    print('num_edge', num_edge)
     assert num_edge.shape == (1,), "num_edge shape must be (1,)"
+    num_edge = num_edge[0]
     num_edge_fp = np.memmap(path.join(base_path, 'raw/num-edge-list.dat'), mode='w+', dtype='int64', shape=(1,))
     num_edge_fp[:] = num_edge
 
     # edge
-    edge = np.load(path.join(base_path, 'raw/edge_index.npy'))
+    edge = np.load(path.join(base_path, 'raw/edge_index.npy')).transpose()
     assert edge.dtype == np.int64
     assert edge.shape == (num_edge, 2), "edge shape must be ({}, 2)".format(num_edge)
     edge_fp = np.memmap(path.join(base_path, 'raw/edge.dat'), mode='w+', dtype='int64', shape=edge.shape)
     edge_fp[:] = edge
 
     # node_feat
-    node_feat = np.genfromtxt(path.join(base_path, 'raw/node_feat.npy'))
+    node_feat = np.load(path.join(base_path, 'raw/node_feat.npy'))
     assert node_feat.dtype == np.float32
     assert node_feat.shape[0] == num_node, "node feat shape[0] must be {}".format(num_node)
     node_feat_fp = np.memmap(path.join(base_path, 'raw/node-feat.dat'), mode='w+', dtype='float32', shape=node_feat.shape)
     node_feat_fp[:] = node_feat
 
     # node_label
-    node_label = np.load(path.join(base_path, 'raw/node_label.npy')).astype(np.int16)
+    node_label = np.load(path.join(base_path, 'raw/node_label.npy')).astype(np.int16).reshape(num_node)
     assert node_label.shape == num_node, "node label shape must be {}".format(num_node)
     node_label_fp = np.memmap(path.join(base_path, 'raw/node-label.dat'),  mode='w+', dtype='int16', shape=node_label.shape)
     node_label_fp[:] = node_label
