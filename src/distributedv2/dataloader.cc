@@ -142,8 +142,10 @@ void inline NeighborSampler::send_response(Communicator *comm, uint16_t depth, u
 void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_id, std::vector<node_id_t> &&seeds, uint64_t ppt) {
   CHECK(ppt > 0);
   uint64_t rem_ppt = ppt;
+  auto estart = std::chrono::system_clock::now();
   std::sort(seeds.begin(), seeds.end());
   seeds.erase(std::unique(seeds.begin(), seeds.end()), seeds.end());
+  erase_time += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - estart).count();
   std::minstd_rand0 engine(req_id ^ ppt ^ depth);
   uint32_t l, r = 0;
   for (uint16_t dstrank = 0; dstrank < size; dstrank++) {
