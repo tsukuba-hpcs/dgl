@@ -117,13 +117,13 @@ class NodeDataLoader(ObjectBase):
         self.world_rank = MPI.COMM_WORLD.Get_rank()
         self.world_size = MPI.COMM_WORLD.Get_size()
         local_comm = None
-        if self.procs_per_data <= 0:
+        if self.procs_per_dataset <= 0:
             local_comm = MPI.COMM_WORLD
         else:
-            assert self.world_size >= self.procs_per_data
-            assert self.world_size % self.procs_per_data == 0
-            color = self.world_rank // self.procs_per_data
-            key = self.world_rank % self.procs_per_data
+            assert self.world_size >= self.procs_per_dataset
+            assert self.world_size % self.procs_per_dataset == 0
+            color = self.world_rank // self.procs_per_dataset
+            key = self.world_rank % self.procs_per_dataset
             local_comm = MPI.COMM_WORLD.Split(color, key)
         self.comm = Communicator(local_comm)
         self.node_slit = (self.num_nodes + self.comm.size - 1) // self.comm.size
@@ -147,7 +147,7 @@ class NodeDataLoader(ObjectBase):
         rkeybufs, addrs = self.__gather_feat_metadata(local_comm)
         _CAPI_DistV2PrepareRMAService(self, rkeybufs, addrs)
 
-    def __init__(self, dataset, num_layers, edges, feats, labels, max_epoch, fanouts = None, batch_size = 1000, prefetch = 5, seed = 777, procs_per_data = 0):
+    def __init__(self, dataset, num_layers, edges, feats, labels, max_epoch, fanouts = None, batch_size = 1000, prefetch = 5, seed = 777, procs_per_dataset = 0):
         self.num_layers = num_layers
         self.labels = labels[:]
         self.dataset = dataset[:]
@@ -159,7 +159,7 @@ class NodeDataLoader(ObjectBase):
             self.fanouts = fanouts
         else:
             self.fanouts = [-1] * self.num_layers
-        self.procs_per_data = procs_per_data
+        self.procs_per_dataset = procs_per_dataset
         self.batch_size = batch_size
         self.epoch = 0
         self.seed = seed
