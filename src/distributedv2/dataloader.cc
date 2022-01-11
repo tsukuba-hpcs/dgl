@@ -27,6 +27,8 @@ static int64_t create_graph_time = 0;
 static int64_t edge_copy_time = 0;
 static int64_t erase_time = 0;
 static int64_t memcpy_time = 0;
+static size_t batch_size_total = 0;
+static size_t batch_num_total = 0;
 
 edge_shard_t::edge_shard_t(NDArray &&_src, NDArray &&_dst, int rank, int size, uint64_t num_nodes)
 : src(std::move(_src))
@@ -432,6 +434,8 @@ void FeatLoader::enqueue(uint64_t req_id) {
   NDArray labels = std::move(prog_que[req_id].inputs.labels);
   NDArray seeds = std::move(prog_que[req_id].inputs.seeds);
   NDArray feats = std::move(prog_que[req_id].feats);
+  batch_num_total++;
+  batch_size_total += feats.NumElements() * (feats->dtype.bits / 8); 
   prog_que.erase(req_id);
   blocks_with_feat_t ret = {
     .labels = std::move(labels),
@@ -634,7 +638,9 @@ DGL_REGISTER_GLOBAL("distributedv2._CAPI_DistV2TermNodeDataLoader")
     << " create_graph_time" << create_graph_time
     << " edge_copy_time" << edge_copy_time
     << " erase_time=" << erase_time
-    << " memcpy_time=" << memcpy_time;
+    << " memcpy_time=" << memcpy_time
+    << " batch_num_total=" << batch_num_total
+    << " batch_size_total=" << batch_size_total;
 });
 
 }
