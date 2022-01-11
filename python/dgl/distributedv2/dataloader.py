@@ -81,14 +81,16 @@ class EdgeShard:
             )
             for batch_l in range(l, r, self.MAX_BUFFER_SIZE)
         ]
-        self.shard = np.concatenate(batched_edges)
-        self.shard = self.shard[np.lexsort((self.shard[:,0], self.shard[:,1]))]
+        shard = np.concatenate(batched_edges)
+        shard = self.shard[np.lexsort((self.shard[:,0], self.shard[:,1]))]
+        self._src = shard[:, 0]
+        self._dst = shard[:, 1]
     @property
     def src(self):
-        return self.shard[:, 0]
+        return self._src
     @property
     def dst(self):
-        return self.shard[:, 1]
+        return self._dst
 
 @register_object('distributedv2.NodeDataLoader')
 class NodeDataLoader(ObjectBase):
@@ -127,7 +129,7 @@ class NodeDataLoader(ObjectBase):
             local_comm = MPI.COMM_WORLD.Split(color, key)
         self.comm = Communicator(local_comm)
         self.node_slit = (self.num_nodes + self.comm.size - 1) // self.comm.size
-        self.shard = EdgeShard(local_comm, edges, self.node_slit)
+        shard = EdgeShard(local_comm, edges, self.node_slit)
         self.local_feats = self.__load_feats(self.comm.rank, self.node_slit, feats)
         self.num_samples = len(self.dataset) // self.world_size
         self.total_size = self.num_samples * self.world_size
@@ -140,8 +142,8 @@ class NodeDataLoader(ObjectBase):
             self.num_nodes,
             self.fanouts,
             nd.from_dlpack(F.zerocopy_to_dlpack(F.zerocopy_from_numpy(self.local_feats))),
-            nd.from_dlpack(F.zerocopy_to_dlpack(F.zerocopy_from_numpy(self.shard.src))),
-            nd.from_dlpack(F.zerocopy_to_dlpack(F.zerocopy_from_numpy(self.shard.dst)))
+            nd.from_dlpack(F.zerocopy_to_dlpack(F.zerocopy_from_numpy(shard.src))),
+            nd.from_dlpack(F.zerocopy_to_dlpack(F.zerocopy_from_numpy(shard.dst)))
         )
         self.comm.create_endpoints(local_comm)
         rkeybufs, addrs = self.__gather_feat_metadata(local_comm)
