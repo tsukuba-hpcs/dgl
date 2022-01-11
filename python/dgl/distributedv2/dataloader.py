@@ -82,7 +82,7 @@ class EdgeShard:
             for batch_l in range(l, r, self.MAX_BUFFER_SIZE)
         ]
         shard = np.concatenate(batched_edges)
-        shard = self.shard[np.lexsort((self.shard[:,0], self.shard[:,1]))]
+        shard = shard[np.lexsort((shard[:,0], shard[:,1]))]
         self._src = shard[:, 0]
         self._dst = shard[:, 1]
     @property
@@ -141,9 +141,9 @@ class NodeDataLoader(ObjectBase):
             self.num_layers,
             self.num_nodes,
             self.fanouts,
-            nd.from_dlpack(F.zerocopy_to_dlpack(F.zerocopy_from_numpy(self.local_feats))),
-            nd.from_dlpack(F.zerocopy_to_dlpack(F.zerocopy_from_numpy(shard.src))),
-            nd.from_dlpack(F.zerocopy_to_dlpack(F.zerocopy_from_numpy(shard.dst)))
+            F.zerocopy_to_dgl_ndarray(F.zerocopy_from_numpy(self.local_feats)),
+            F.zerocopy_to_dgl_ndarray(F.zerocopy_from_numpy(shard.src)),
+            F.zerocopy_to_dgl_ndarray(F.zerocopy_from_numpy(shard.dst))
         )
         self.comm.create_endpoints(local_comm)
         rkeybufs, addrs = self.__gather_feat_metadata(local_comm)
@@ -178,8 +178,8 @@ class NodeDataLoader(ObjectBase):
         l = self.batch_size * (self.pre_iter % self.num_batch)
         r = min(self.num_samples, l + self.batch_size)
         _CAPI_DistV2EnqueueToNodeDataLoader(self,
-                nd.from_dlpack(F.zerocopy_to_dlpack(F.zerocopy_from_numpy(self.indices[l:r]))),
-                nd.from_dlpack(F.zerocopy_to_dlpack(F.zerocopy_from_numpy(self.iter_labels[l:r]))))
+                F.zerocopy_to_dgl_ndarray(F.zerocopy_from_numpy(self.indices[l:r])),
+                F.zerocopy_to_dgl_ndarray(F.zerocopy_from_numpy(self.iter_labels[l:r])))
         self.pre_iter += 1
         if self.pre_iter % self.num_batch == 0:
             self.__reset()
