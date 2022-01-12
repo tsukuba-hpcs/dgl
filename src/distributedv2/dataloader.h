@@ -30,9 +30,10 @@ class NDArrayPool {
   std::vector<uint8_t> buffer;
   std::list<ndarray_pool_item_t> chunks;
   std::atomic_bool ready;
+  void dump_chunks();
 public:
   NDArrayPool(size_t capacity = (1<<29));
-  NDArray alloc(std::vector<int64_t> &&shape, DLDataType &&dtype);
+  NDArray alloc(std::vector<int64_t> shape, DLDataType dtype);
   static void release(DLManagedTensor* managed_tensor);
 };
 
@@ -163,6 +164,7 @@ class FeatLoader: public RMAService {
   int rank, size;
   uint64_t node_slit;
   uint64_t req_id;
+  NDArrayPool pool;
   std::queue<blocks_with_label_t>  *input_que;
   BlockingConcurrentQueue<blocks_with_feat_t> *output_que;
   std::unordered_map<uint64_t, feat_loader_prog_t> prog_que;

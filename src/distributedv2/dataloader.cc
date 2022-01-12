@@ -90,8 +90,13 @@ NDArrayPool::NDArrayPool(size_t capacity)
 , ready(true)
 {}
 
-NDArray NDArrayPool::alloc(std::vector<int64_t> &&shape, DLDataType &&dtype) {
+void NDArrayPool::dump_chunks() {
+  for (auto chunk: chunks) {
+    LOG(INFO) << "chunk offset=" << chunk.offset << " length=" << chunk.length;
+  }
+}
 
+NDArray NDArrayPool::alloc(std::vector<int64_t> shape, DLDataType dtype) {
   size_t length = dtype.bits / 8;
   for (uint16_t dim = 0; dim < shape.size(); dim++) {
     CHECK(shape[dim] > 0);
@@ -109,11 +114,21 @@ NDArray NDArrayPool::alloc(std::vector<int64_t> &&shape, DLDataType &&dtype) {
   if (!chunks.empty()) {
     offset = chunks.back().offset + chunks.back().length;
     if (offset + length > buffer.size()) {
+      // [new chunk] -- [front] -- [back]
       offset = 0;
+      if (length > chunks.front().offset) {
+        dump_chunks();
+        LOG(FATAL)
+          << "NDArrayPool::alloc() failed with"
+          << " chunks.front().offset=" << chunks.front().offset
+          << " offset=" << offset
+          << " length=" << length;
+      }
     }
     // [back] -- [new chunk] -- [front]
     // check                 |<- this border
     if (chunks.back().offset < chunks.front().offset && offset + length > chunks.front().offset) {
+      dump_chunks();
       LOG(FATAL)
         << "NDArrayPool::alloc() failed with"
         << " chunks.front().offset=" << chunks.front().offset
@@ -124,6 +139,7 @@ NDArray NDArrayPool::alloc(std::vector<int64_t> &&shape, DLDataType &&dtype) {
   // [back] -- [new chunk] |
   // check                 |<- this border
   if (offset + length > buffer.size()) {
+    dump_chunks();
     LOG(FATAL)
       << "NDArrayPool::alloc() failed with"
       << " buffer.size()=" << buffer.size()
@@ -572,8 +588,7 @@ unsigned FeatLoader::progress(Communicator *comm) {
       static_cast<int64_t>(input_nodes.size()),
       static_cast<int64_t>(feats_row)
     };
-    prog_que[req_id].feats = NDArray::Empty(shape, local_feats->dtype, DLContext{kDLCPU, 0});
-
+    prog_que[req_id].feats = pool.alloc(shape, local_feats->dtype);
     for (size_t row = 0; row < shape[0]; row++) {
       node_id_t node = input_nodes[row];
       int src_rank = node / node_slit;
