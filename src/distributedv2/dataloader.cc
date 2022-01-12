@@ -483,7 +483,7 @@ unsigned FeatLoader::progress(Communicator *comm) {
   return 0;
 }
 
-void FeatLoader::rma_read_cb(Communicator *comm, uint64_t req_id, void *buffer) {
+void FeatLoader::rma_read_cb(Communicator *comm, uint64_t req_id) {
   prog_que[req_id].received++;
   if (prog_que[req_id].received == prog_que[req_id].num_input_nodes) {
     /*

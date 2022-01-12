@@ -19,7 +19,7 @@ namespace distributedv2 {
 
 typedef void (*comm_am_cb_t)(void *arg, const void *buffer, size_t length);
 
-typedef void (*comm_rma_cb_t)(void *arg, uint64_t req_id, void *address);
+typedef void (*comm_rma_cb_t)(void *arg, uint64_t req_id);
 
 #define MAX_IOV_CNT 8
 
@@ -77,7 +77,7 @@ struct rma_pool_item_t {
   bool used;
   rma_handler_t *handler;
   uint64_t req_id;
-  void *address;
+  size_t bulk_size;
   rma_pool_item_t(rma_handler_t *handler);
   void release();
 };
@@ -87,7 +87,7 @@ class RmaPool {
   size_t cursor;
 public:
   RmaPool(size_t length);
-  int alloc(rma_pool_item_t** item, size_t req_id, void *address, rma_handler_t *handler);
+  int alloc(rma_pool_item_t** item, size_t req_id, rma_handler_t *handler);
 };
 
 enum class CommState {
@@ -132,7 +132,7 @@ class Communicator: public runtime::Object {
 public:
   const int rank;
   const int size;
-  Communicator(int rank, int size, size_t am_buffer_len = (1<<16), size_t rma_buffer_len = (1<<24));
+  Communicator(int rank, int size, size_t am_buffer_len = (1<<16), size_t rma_buffer_len = (1<<5));
   ~Communicator();
   // for Endpoints
   std::pair<void*, int> create_workers();

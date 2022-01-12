@@ -33,9 +33,9 @@ void ServiceManager::add_am_service(std::unique_ptr<AMService> &&serv) {
  ((AMService *)servs.back().get())->am_id = am_id;
 }
 
-void ServiceManager::rma_recv_cb(void *arg, uint64_t req_id, void *address) {
+void ServiceManager::rma_recv_cb(void *arg, uint64_t req_id) {
   sm_cb_arg_t *cbarg = (sm_cb_arg_t *)arg;
-  ((RMAService *)cbarg->serv)->rma_read_cb(cbarg->comm, req_id, address);
+  ((RMAService *)cbarg->serv)->rma_read_cb(cbarg->comm, req_id);
 }
 
 void ServiceManager::add_rma_service(std::unique_ptr<RMAService> &&serv) {

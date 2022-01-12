@@ -157,7 +157,7 @@ public:
     BlockingConcurrentQueue<blocks_with_feat_t> *output_que
   );
   std::pair<void *, size_t> served_buffer();
-  void rma_read_cb(Communicator *comm, uint64_t req_id, void *buffer);
+  void rma_read_cb(Communicator *comm, uint64_t req_id);
   unsigned progress(Communicator *comm);
 };
 

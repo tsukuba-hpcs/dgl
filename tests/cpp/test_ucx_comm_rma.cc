@@ -39,7 +39,7 @@ protected:
 };
 
 
-static void recv_cb(void *arg, uint64_t req_id, void *address) {
+static void recv_cb(void *arg, uint64_t req_id) {
   *((bool *)arg) = true;
 }
 

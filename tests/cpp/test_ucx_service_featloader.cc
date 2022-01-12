@@ -75,6 +75,7 @@ TEST_F(FeatLoaderTest, TEST1) {
   std::vector<node_id_t> src_nodes{1, 6};
   blocks_with_label_t item = {
     .blocks = std::vector<dgl::HeteroGraphPtr>{}
+  , .seeds = dgl::NDArray::FromVector(std::vector<int64_t>{1, 6})
   , .labels = dgl::NDArray::FromVector(std::vector<int>{0, 0})
   , .input_nodes = src_nodes,
   };

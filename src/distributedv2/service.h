@@ -51,7 +51,7 @@ class RMAService: public Service {
 public:
   unsigned rma_id;
   virtual std::pair<void *, size_t> served_buffer() = 0;
-  virtual void rma_read_cb(Communicator *comm, uint64_t req_id, void *buffer) = 0;
+  virtual void rma_read_cb(Communicator *comm, uint64_t req_id) = 0;
 };
 
 struct sm_cb_arg_t {
@@ -70,7 +70,7 @@ class ServiceManager {
   int rank, size;
   std::thread progress_thread;
   static void am_recv_cb(void *arg, const void *buffer, size_t length);
-  static void rma_recv_cb(void *arg, uint64_t req_id, void *address);
+  static void rma_recv_cb(void *arg, uint64_t req_id);
   // for debugging
   size_t progress_counter = 0;
   size_t act_counter = 0;

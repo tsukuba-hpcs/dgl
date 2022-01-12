@@ -405,6 +405,11 @@ rma_pool_item_t::rma_pool_item_t(rma_handler_t *handler = NULL)
 
 void rma_pool_item_t::release() {
   CHECK(used);
+  CHECK(bulk_size > 0);
+  bulk_size--;
+  if (bulk_size > 0) {
+    return;
+  }
   used = false;
 }
 
@@ -412,8 +417,23 @@ RmaPool::RmaPool(size_t length)
 : buffer(length), cursor(0) {
 }
 
-int RmaPool::alloc(rma_pool_item_t** item, size_t req_id, void *address, rma_handler_t *handler) {
+int RmaPool::alloc(rma_pool_item_t** item, size_t req_id, rma_handler_t *handler) {
   rma_pool_item_t *p = &buffer[cursor];
+  if (!p->used) {
+    p->used = true;
+    p->req_id = req_id;
+    p->bulk_size = 1;
+    p->handler = handler;
+    *item = p;
+    return 0;
+  }
+  if (p->req_id == req_id) {
+    p->bulk_size++;
+    *item = p;
+    return 0;
+  }
+  cursor = (cursor + 1) % buffer.size();
+  p = &buffer[cursor];
   if (p->used) {
     LOG(INFO) << "RmaPool alloc item failed: cursor= " << cursor;
     int used = 0;
@@ -425,10 +445,9 @@ int RmaPool::alloc(rma_pool_item_t** item, size_t req_id, void *address, rma_han
   }
   p->used = true;
   p->req_id = req_id;
-  p->address = address;
+  p->bulk_size = 1;
   p->handler = handler;
   *item = p;
-  cursor = (cursor + 1) % buffer.size();
   return 0;
 }
 
@@ -496,7 +515,7 @@ void Communicator::read_cb(void *request, ucs_status_t status, void *user_data) 
     return;
   }
   rma_pool_item_t *item = (rma_pool_item_t *)user_data;
-  item->handler->cb(item->handler->arg, item->req_id, item->address);
+  item->handler->cb(item->handler->arg, item->req_id);
   item->release();
   ucp_request_free(request);
 }
@@ -506,7 +525,7 @@ void Communicator::rma_read(int destrank, unsigned rma_id, uint64_t req_id, void
   ucs_status_ptr_t status;
   rma_pool_item_t *item;
   rma_handler_t *handler = &rma_handlers[rma_id];
-  CHECK(!rma_pool.alloc(&item, req_id, buffer, handler));
+  CHECK(!rma_pool.alloc(&item, req_id, handler));
   ucp_request_param_t params = {
     .op_attr_mask = UCP_OP_ATTR_FIELD_CALLBACK | UCP_OP_ATTR_FIELD_USER_DATA,
     .cb = {
@@ -516,7 +535,7 @@ void Communicator::rma_read(int destrank, unsigned rma_id, uint64_t req_id, void
   };
   status = ucp_get_nbx(rma_handlers[rma_id].eps[destrank], buffer, length, handler->addresses[destrank] + offset, handler->rkeys[destrank], &params);
   if (status == NULL) {
-    handler->cb(handler->arg, req_id, buffer);
+    handler->cb(handler->arg, req_id);
     item->release();
     return;
   }
