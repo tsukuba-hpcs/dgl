@@ -135,6 +135,7 @@ class NodeDataLoader(ObjectBase):
         self.total_size = self.num_samples * self.world_size
         self.num_batch = (self.num_samples + self.batch_size - 1) // self.batch_size
         assert self.prefetch <= self.num_batch * self.max_epoch
+        assert 0 <= self.prefetch
         self.__init_handle_by_constructor__(
             _CAPI_DistV2CreateNodeDataLoader,
             self.comm,
@@ -194,13 +195,13 @@ class NodeDataLoader(ObjectBase):
         return self
 
     def __next__(self):
+        if self.iter >= self.num_batch:
+            raise StopIteration
         if self.pre_iter < self.num_batch * self.max_epoch:
             self.__enqueue()
-        if self.iter < self.num_batch:
-            self.iter += 1
-            _blocks, labels, feats = _CAPI_DistV2DequeueToNodeDataLoader(self)
-            blocks = [DGLBlock(block, (['_N'], ['_N'])) for block in _blocks]
-            return blocks, F.from_dgl_nd(feats),  F.from_dgl_nd(labels)
-        raise StopIteration
+        self.iter += 1
+        _blocks, labels, feats = _CAPI_DistV2DequeueToNodeDataLoader(self)
+        blocks = [DGLBlock(block, (['_N'], ['_N'])) for block in _blocks]
+        return blocks, F.from_dgl_nd(feats),  F.from_dgl_nd(labels)
 
 _init_api("dgl.distributedv2", __name__)
