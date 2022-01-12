@@ -12,6 +12,7 @@
 #include "../graph/transform/to_bipartite.h"
 #include <vector>
 #include <queue>
+#include <list>
 
 namespace dgl {
 namespace distributedv2 {
@@ -19,6 +20,21 @@ namespace distributedv2 {
 using namespace dmlc::moodycamel;
 
 using node_id_t = int64_t;
+
+struct ndarray_pool_item_t {
+  size_t length;
+  intptr_t offset;
+};
+
+class NDArrayPool {
+  std::vector<uint8_t> buffer;
+  std::list<ndarray_pool_item_t> chunks;
+  std::atomic_bool ready;
+public:
+  NDArrayPool(size_t capacity = (1<<29));
+  NDArray alloc(std::vector<int64_t> &&shape, DLDataType &&dtype);
+  static void release(DLManagedTensor* managed_tensor);
+};
 
 struct seed_with_label_t {
   NDArray seeds;

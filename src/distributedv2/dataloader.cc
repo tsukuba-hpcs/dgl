@@ -85,6 +85,121 @@ void edge_shard_t::in_edges(node_id_t **src_ids, size_t *length, node_id_t dst_i
   *src_ids = (node_id_t *)PTR_BYTE_OFFSET(src->data, sizeof(node_id_t) * offset[dst_id % node_slit]);
 }
 
+NDArrayPool::NDArrayPool(size_t capacity)
+: buffer(capacity)
+, ready(true)
+{}
+
+NDArray NDArrayPool::alloc(std::vector<int64_t> &&shape, DLDataType &&dtype) {
+
+  size_t length = dtype.bits / 8;
+  for (uint16_t dim = 0; dim < shape.size(); dim++) {
+    CHECK(shape[dim] > 0);
+    length *= shape[dim];
+  }
+  size_t offset = 0;
+  // sync
+  {
+    bool expected;
+    do {
+      expected = true;
+      ready.compare_exchange_weak(expected, false, std::memory_order_acquire);
+    } while (!expected);
+  }
+  if (!chunks.empty()) {
+    offset = chunks.back().offset + chunks.back().length;
+    if (offset + length > buffer.size()) {
+      offset = 0;
+    }
+    // [back] -- [new chunk] -- [front]
+    // check                 |<- this border
+    if (chunks.back().offset < chunks.front().offset && offset + length > chunks.front().offset) {
+      LOG(FATAL)
+        << "NDArrayPool::alloc() failed with"
+        << " chunks.front().offset=" << chunks.front().offset
+        << " offset=" << offset
+        << " length=" << length;
+    }
+  }
+  // [back] -- [new chunk] |
+  // check                 |<- this border
+  if (offset + length > buffer.size()) {
+    LOG(FATAL)
+      << "NDArrayPool::alloc() failed with"
+      << " buffer.size()=" << buffer.size()
+      << " offset=" << offset
+      << " length=" << length;
+  }
+  ndarray_pool_item_t item{
+    .length = length,
+    .offset = offset,
+  };
+  chunks.push_back(std::move(item));
+  // sync
+  {
+    ready.store(true, std::memory_order_release);
+  }
+  DLTensor tensor;
+  tensor.ctx = DLContext{kDLCPU, 0};
+  tensor.ndim = static_cast<int>(shape.size());
+  tensor.dtype = dtype;
+  tensor.shape = new int64_t[tensor.ndim];
+  for (int i = 0; i < tensor.ndim; ++i) {
+    tensor.shape[i] = shape[i];
+  }
+  tensor.strides = new int64_t[tensor.ndim];
+  for (int i = 0; i < tensor.ndim; ++i) {
+    tensor.strides[i] = 1;
+  }
+  for (int i = tensor.ndim - 2; i >= 0; --i) {
+    tensor.strides[i] = tensor.shape[i+1] * tensor.strides[i+1];
+  }
+  tensor.data = PTR_BYTE_OFFSET(&buffer[0], offset);
+  DLManagedTensor *managed_tensor = new DLManagedTensor();
+  managed_tensor->dl_tensor = std::move(tensor);
+  managed_tensor->deleter = NDArrayPool::release;
+  managed_tensor->manager_ctx = this;
+  return NDArray::FromDLPack(managed_tensor);
+}
+
+void NDArrayPool::release(DLManagedTensor* managed_tensor) {
+  NDArrayPool *self = (NDArrayPool *)managed_tensor->manager_ctx;
+  size_t length = managed_tensor->dl_tensor.dtype.bits / 8;
+  for (uint16_t dim = 0; dim < managed_tensor->dl_tensor.ndim; dim++) {
+    CHECK(managed_tensor->dl_tensor.shape[dim] > 0);
+    length *= managed_tensor->dl_tensor.shape[dim];
+  }
+  bool found = false;
+  auto ptr = managed_tensor->dl_tensor.data;
+  // sync
+  {
+    bool expected;
+    do {
+      expected = true;
+      self->ready.compare_exchange_weak(expected, false, std::memory_order_acquire);
+    } while (!expected);
+  }
+  for (auto itr = self->chunks.begin(); itr != self->chunks.end();) {
+    if (PTR_BYTE_OFFSET(&self->buffer[0], itr->offset) == ptr) {
+      CHECK(!found) << "offset is duplicated";
+      found = true;
+      itr = self->chunks.erase(itr);
+      continue;
+    }
+    itr++;
+  }
+  // sync
+  {
+    self->ready.store(true, std::memory_order_release);
+  }
+  if (!found) {
+    LOG(FATAL) << "NDArrayPool::release(): chunk not found";
+  }
+  delete [] managed_tensor->dl_tensor.shape;
+  delete [] managed_tensor->dl_tensor.strides;
+  delete managed_tensor;
+}
+
 NeighborSampler::NeighborSampler(neighbor_sampler_arg_t &&arg,
   BlockingConcurrentQueue<seed_with_label_t> *input_que,
   std::queue<blocks_with_label_t> *output_que)
