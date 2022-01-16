@@ -92,7 +92,11 @@ def csv2mmap(base_path: str, name: str):
     edge = np.genfromtxt(path.join(base_path, 'raw/edge.csv'), delimiter=',', dtype=np.int64)
     assert edge.shape == (num_edge, 2), "edge shape must be ({}, 2)".format(num_edge)
     edge_fp = np.memmap(path.join(base_path, 'raw/edge.dat'), mode='w+', dtype='int64', shape=edge.shape)
-    edge_fp[:] = edge
+    if meta_info['add_inverse_edge'] == 'True':
+        rev = np.flip(edges, axis=1)
+        edge_fp[:] = np.concatenate([edges, rev])
+    else:
+        edge_fp[:] = edge
 
     # node_feat
     node_feat = np.genfromtxt(path.join(base_path, 'raw/node-feat.csv'), delimiter=',', dtype=np.float32)
