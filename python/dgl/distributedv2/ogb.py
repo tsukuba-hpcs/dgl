@@ -86,16 +86,20 @@ def csv2mmap(base_path: str, name: str):
     num_edge = np.genfromtxt(path.join(base_path, 'raw/num-edge-list.csv'), delimiter=',', dtype=np.int64)
     assert num_edge.shape == (), "num_edge shape must be (,)"
     num_edge_fp = np.memmap(path.join(base_path, 'raw/num-edge-list.dat'), mode='w+', dtype='int64', shape=(1,))
-    num_edge_fp[:] = num_edge
+    if meta_info['add_inverse_edge'] == 'True':
+        num_edge_fp[:] = num_edge * 2
+    else:
+        num_edge_fp[:] = num_edge
 
     # edge
     edge = np.genfromtxt(path.join(base_path, 'raw/edge.csv'), delimiter=',', dtype=np.int64)
     assert edge.shape == (num_edge, 2), "edge shape must be ({}, 2)".format(num_edge)
-    edge_fp = np.memmap(path.join(base_path, 'raw/edge.dat'), mode='w+', dtype='int64', shape=edge.shape)
     if meta_info['add_inverse_edge'] == 'True':
-        rev = np.flip(edges, axis=1)
-        edge_fp[:] = np.concatenate([edges, rev])
+        edge_fp = np.memmap(path.join(base_path, 'raw/edge.dat'), mode='w+', dtype='int64', shape=(num_edge * 2, 2))
+        rev = np.flip(edge, axis=1)
+        edge_fp[:] = np.concatenate([edge, rev])
     else:
+        edge_fp = np.memmap(path.join(base_path, 'raw/edge.dat'), mode='w+', dtype='int64', shape=(num_edge, 2))
         edge_fp[:] = edge
 
     # node_feat
