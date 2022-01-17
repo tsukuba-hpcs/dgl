@@ -32,7 +32,7 @@ class NDArrayPool {
   std::atomic_bool ready;
   void dump_chunks();
 public:
-  NDArrayPool(size_t capacity = (1<<29));
+  NDArrayPool(size_t capacity = (1<<30));
   NDArray alloc(std::vector<int64_t> shape, DLDataType dtype);
   static void release(DLManagedTensor* managed_tensor);
 };
