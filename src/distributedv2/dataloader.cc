@@ -433,14 +433,11 @@ void inline NeighborSampler::enqueue(uint64_t req_id) {
       *(node_id_t *)PTR_BYTE_OFFSET(dst->data, sizeof(node_id_t) * idx) = edges[idx].dst;
     }
     edge_copy_time += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - t3).count();
-    for (edge_elem_t edge: edges) {
-      nodes.push_back(edge.src);
-    }
     auto t4 = std::chrono::system_clock::now();
     HeteroGraphPtr g = CreateFromCOO(1, edges_len, edges_len, src, dst, false, false);
     create_graph_time += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - t4).count();
     auto t5 = std::chrono::system_clock::now();
-    std::vector<IdArray> src_nodes{IdArray::FromVector(nodes)};
+    std::vector<IdArray> src_nodes;
     create_idarray_time += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - t5).count();
     auto t6 = std::chrono::system_clock::now();
     std::tie(a, b) = transform::ToBlock<kDLCPU, node_id_t>(g, dst_nodes, true, &src_nodes);
@@ -449,13 +446,9 @@ void inline NeighborSampler::enqueue(uint64_t req_id) {
     dst_nodes = std::move(src_nodes);
   }
   std::reverse(ret.blocks.begin(), ret.blocks.end());
-  std::unordered_map<node_id_t, bool> used;
   auto t7 = std::chrono::system_clock::now();
-  for (node_id_t node: nodes) {
-    if (used[node]) continue;
-    used[node] = true;
-    ret.input_nodes.push_back(node);
-  }
+  CHECK(dst_nodes.size() == 1);
+  ret.input_nodes = std::move(dst_nodes[0]);
   erase_time += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - t7).count();
   output_que->push(std::move(ret));
   prog_que.erase(req_id);
@@ -583,14 +576,14 @@ unsigned FeatLoader::progress(Communicator *comm) {
     blocks_with_label_t item = std::move(input_que->front());
     prog_que[req_id] = feat_loader_prog_t(std::move(item));
     input_que->pop();
-    std::vector<node_id_t> &input_nodes = prog_que[req_id].inputs.input_nodes;
+    NDArray input_nodes = std::move(prog_que[req_id].inputs.input_nodes);
     std::vector<int64_t> shape{
-      static_cast<int64_t>(input_nodes.size()),
+      static_cast<int64_t>(input_nodes.NumElements()),
       static_cast<int64_t>(feats_row)
     };
     prog_que[req_id].feats = pool.alloc(shape, local_feats->dtype);
     for (size_t row = 0; row < shape[0]; row++) {
-      node_id_t node = input_nodes[row];
+      node_id_t node = input_nodes.Ptr<node_id_t>()[row];
       int src_rank = node / node_slit;
       CHECK(src_rank < size);
       uint64_t offset = (node % node_slit) * feats_row_size;

@@ -86,7 +86,7 @@ struct blocks_with_label_t {
   std::vector<HeteroGraphPtr> blocks;
   NDArray seeds;
   NDArray labels;
-  std::vector<node_id_t> input_nodes;
+  NDArray input_nodes;
 };
 
 struct neighbor_sampler_arg_t {
@@ -139,7 +139,7 @@ struct feat_loader_prog_t {
   feat_loader_prog_t(blocks_with_label_t &&_inputs)
   : inputs(std::move(_inputs))
   , received(0) {
-    num_input_nodes = inputs.input_nodes.size();
+    num_input_nodes = inputs.input_nodes.NumElements();
   }
 };
 

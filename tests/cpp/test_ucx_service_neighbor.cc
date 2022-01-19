@@ -138,13 +138,13 @@ TEST_F(ServTest, TEST1) {
   ASSERT_TRUE(blocks[1]->HasEdgeBetween(0, 4, 1)); // 3->4
   ASSERT_TRUE(blocks[1]->HasEdgeBetween(0, 5, 2)); // 1->5
   ASSERT_TRUE(blocks[2]->HasEdgeBetween(0, 2, 5)); // 5->1
-  ASSERT_EQ(input_nodes.size(), 6);
-  ASSERT_EQ(input_nodes[0], 0);
-  ASSERT_EQ(input_nodes[1], 4);
-  ASSERT_EQ(input_nodes[2], 5);
-  ASSERT_EQ(input_nodes[3], 2);
-  ASSERT_EQ(input_nodes[4], 3);
-  ASSERT_EQ(input_nodes[5], 1);
+  ASSERT_EQ(input_nodes.NumElements(), 6);
+  ASSERT_EQ(input_nodes.Ptr<int64_t>()[0], 0);
+  ASSERT_EQ(input_nodes.Ptr<int64_t>()[1], 4);
+  ASSERT_EQ(input_nodes.Ptr<int64_t>()[2], 5);
+  ASSERT_EQ(input_nodes.Ptr<int64_t>()[3], 2);
+  ASSERT_EQ(input_nodes.Ptr<int64_t>()[4], 3);
+  ASSERT_EQ(input_nodes.Ptr<int64_t>()[5], 1);
 }
 
 TEST_F(ServTest, KARATE_CLUB_1) {

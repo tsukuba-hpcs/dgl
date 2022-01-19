@@ -72,12 +72,11 @@ TEST_F(FeatLoaderTest, TEST1) {
     create_ep();
     mem_map();
   }
-  std::vector<node_id_t> src_nodes{1, 6};
   blocks_with_label_t item = {
     .blocks = std::vector<dgl::HeteroGraphPtr>{}
   , .seeds = dgl::NDArray::FromVector(std::vector<int64_t>{1, 6})
   , .labels = dgl::NDArray::FromVector(std::vector<int>{0, 0})
-  , .input_nodes = src_nodes,
+  , .input_nodes = dgl::NDArray::FromVector(std::vector<int64_t>{1, 6}),
   };
   input0.push(std::move(item));
   blocks_with_feat_t out;
