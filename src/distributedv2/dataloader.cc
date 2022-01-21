@@ -280,6 +280,10 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
   seeds.erase(std::unique(seeds.begin(), seeds.end()), seeds.end());
   erase_time += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - estart).count();
   std::minstd_rand0 engine(req_id ^ ppt ^ depth);
+  std::vector<uint32_t> seq;
+  if (fanouts[depth] > 0) {
+    seq.reserve(fanouts[depth]);
+  }
   uint32_t l, r = 0;
   for (uint16_t dstrank = 0; dstrank < size; dstrank++) {
     l = r;
@@ -320,12 +324,14 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
         } else {
           // sampling
           // auto mstart = std::chrono::system_clock::now();
-          std::vector<uint32_t> seq(edge_len);
-          std::iota(seq.begin(), seq.end(), 0);
-          for (uint32_t idx = edge_len-1; idx >= fanouts[depth]; idx--) {
-            std::swap(seq[idx], seq[engine() % idx]);
+          seq.clear();
+          while (seq.size() < fanouts[depth]) {
+            uint32_t idx = engine() % edge_len;
+            if (std::find(seq.begin(), seq.end(), idx) == seq.end()) {
+              seq.push_back(idx);
+            }
           }
-          std::sort(seq.begin(), seq.begin() + fanouts[depth]);
+          std::sort(seq.begin(), seq.end());
           // memcpy_time += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - mstart).count();
           for (uint32_t idx = 0; idx < fanouts[depth]; idx++) {
             src = src_ids[seq[idx]];
@@ -368,12 +374,14 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
         } else {
           // sampling
           // auto mstart = std::chrono::system_clock::now();
-          std::vector<uint32_t> seq(edge_len);
-          std::iota(seq.begin(), seq.end(), 0);
-          for (uint32_t idx = edge_len-1; idx >= fanouts[depth]; idx--) {
-            std::swap(seq[idx], seq[engine() % idx]);
+          seq.clear();
+          while (seq.size() < fanouts[depth]) {
+            uint32_t idx = engine() % edge_len;
+            if (std::find(seq.begin(), seq.end(), idx) == seq.end()) {
+              seq.push_back(idx);
+            }
           }
-          std::sort(seq.begin(), seq.begin() + fanouts[depth]);
+          std::sort(seq.begin(), seq.end());
           // memcpy_time += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - mstart).count();
           for (uint32_t idx = 0; idx < fanouts[depth]; idx++) {
             edge_elem_t elem{.src = src_ids[seq[idx]], .dst = seeds[dst_idx]};
