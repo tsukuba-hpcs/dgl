@@ -282,7 +282,16 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
   std::minstd_rand0 engine(req_id ^ ppt ^ depth);
   std::vector<uint32_t> seq;
   if (fanouts[depth] > 0) {
-    seq.reserve(fanouts[depth]);
+    // https://github.com/python/cpython/blob/main/Lib/random.py
+    size_t setsize = 21;
+    if (fanouts[depth] > 5) {
+      size_t ss = 1;
+      for (size_t b = 4; b <= fanouts[depth] * 3; b *= 4) {
+        ss *= 4;
+      }
+      setsize += ss;
+    }
+    seq.reserve(setsize);
   }
   uint32_t l, r = 0;
   for (uint16_t dstrank = 0; dstrank < size; dstrank++) {
@@ -324,14 +333,22 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
         } else {
           // sampling
           // auto mstart = std::chrono::system_clock::now();
-          seq.clear();
-          while (seq.size() < fanouts[depth]) {
-            uint32_t idx = engine() % edge_len;
-            if (std::find(seq.begin(), seq.end(), idx) == seq.end()) {
-              seq.push_back(idx);
+          if (edge_len <= seq.capacity()) {
+            seq.resize(edge_len);
+            std::iota(seq.begin(), seq.begin() + edge_len, 0);
+            for (uint32_t idx = edge_len-1; idx >= fanouts[depth]; idx--) {
+              std::swap(seq[idx], seq[engine() % idx]);
+            }
+          } else {
+            seq.clear();
+            while (seq.size() < fanouts[depth]) {
+              uint32_t idx = engine() % edge_len;
+              if (std::find(seq.begin(), seq.end(), idx) == seq.end()) {
+                seq.push_back(idx);
+              }
             }
           }
-          std::sort(seq.begin(), seq.end());
+          std::sort(seq.begin(), seq.begin() + fanouts[depth]);
           // memcpy_time += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - mstart).count();
           for (uint32_t idx = 0; idx < fanouts[depth]; idx++) {
             src = src_ids[seq[idx]];
@@ -374,14 +391,22 @@ void NeighborSampler::scatter(Communicator *comm, uint16_t depth, uint64_t req_i
         } else {
           // sampling
           // auto mstart = std::chrono::system_clock::now();
-          seq.clear();
-          while (seq.size() < fanouts[depth]) {
-            uint32_t idx = engine() % edge_len;
-            if (std::find(seq.begin(), seq.end(), idx) == seq.end()) {
-              seq.push_back(idx);
+          if (edge_len <= seq.capacity()) {
+            seq.resize(edge_len);
+            std::iota(seq.begin(), seq.begin() + edge_len, 0);
+            for (uint32_t idx = edge_len-1; idx >= fanouts[depth]; idx--) {
+              std::swap(seq[idx], seq[engine() % idx]);
+            }
+          } else {
+            seq.clear();
+            while (seq.size() < fanouts[depth]) {
+              uint32_t idx = engine() % edge_len;
+              if (std::find(seq.begin(), seq.end(), idx) == seq.end()) {
+                seq.push_back(idx);
+              }
             }
           }
-          std::sort(seq.begin(), seq.end());
+          std::sort(seq.begin(), seq.begin() + fanouts[depth]);
           // memcpy_time += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - mstart).count();
           for (uint32_t idx = 0; idx < fanouts[depth]; idx++) {
             edge_elem_t elem{.src = src_ids[seq[idx]], .dst = seeds[dst_idx]};
