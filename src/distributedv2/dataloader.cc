@@ -118,33 +118,42 @@ NDArray NDArrayPool::alloc(std::vector<int64_t> shape, DLDataType dtype) {
       offset = 0;
       if (length > chunks.front().offset) {
         dump_chunks();
-        LOG(FATAL)
+        LOG(INFO)
           << "NDArrayPool::alloc() failed with"
           << " chunks.front().offset=" << chunks.front().offset
           << " offset=" << offset
           << " length=" << length;
+        // sync
+        ready.store(true, std::memory_order_release);
+        return NDArray::Empty(shape, dtype, DLContext{kDLCPU, 0});
       }
     }
     // [back] -- [new chunk] -- [front]
     // check                 |<- this border
     if (chunks.back().offset < chunks.front().offset && offset + length > chunks.front().offset) {
       dump_chunks();
-      LOG(FATAL)
+      LOG(INFO)
         << "NDArrayPool::alloc() failed with"
         << " chunks.front().offset=" << chunks.front().offset
         << " offset=" << offset
         << " length=" << length;
+      // sync
+      ready.store(true, std::memory_order_release);
+      return NDArray::Empty(shape, dtype, DLContext{kDLCPU, 0});
     }
   }
   // [back] -- [new chunk] |
   // check                 |<- this border
   if (offset + length > buffer.size()) {
     dump_chunks();
-    LOG(FATAL)
+    LOG(INFO)
       << "NDArrayPool::alloc() failed with"
       << " buffer.size()=" << buffer.size()
       << " offset=" << offset
       << " length=" << length;
+    // sync
+    ready.store(true, std::memory_order_release);
+    return NDArray::Empty(shape, dtype, DLContext{kDLCPU, 0});
   }
   ndarray_pool_item_t item{
     .length = length,
@@ -152,9 +161,7 @@ NDArray NDArrayPool::alloc(std::vector<int64_t> shape, DLDataType dtype) {
   };
   chunks.push_back(std::move(item));
   // sync
-  {
-    ready.store(true, std::memory_order_release);
-  }
+  ready.store(true, std::memory_order_release);
   DLTensor tensor;
   tensor.ctx = DLContext{kDLCPU, 0};
   tensor.ndim = static_cast<int>(shape.size());
