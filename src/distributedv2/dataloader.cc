@@ -130,7 +130,7 @@ NDArray NDArrayPool::alloc(std::vector<int64_t> shape, DLDataType dtype) {
     }
     // [back] -- [new chunk] -- [front]
     // check                 |<- this border
-    if (chunks.back().offset < chunks.front().offset && offset + length > chunks.front().offset) {
+    if (chunks.back().offset <= chunks.front().offset && offset + length > chunks.front().offset) {
       dump_chunks();
       LOG(INFO)
         << "NDArrayPool::alloc() failed with"
@@ -204,7 +204,12 @@ void NDArrayPool::release(DLManagedTensor* managed_tensor) {
   }
   for (auto itr = self->chunks.begin(); itr != self->chunks.end();) {
     if (PTR_BYTE_OFFSET(&self->buffer[0], itr->offset) == ptr) {
-      CHECK(!found) << "offset is duplicated";
+      if (found) {
+        self->dump_chunks();
+        LOG(FATAL)
+          << " offset is duplicated offset=" << itr->offset
+          << " chunks.size()=" << self->chunks.size();
+      }
       found = true;
       itr = self->chunks.erase(itr);
       continue;
