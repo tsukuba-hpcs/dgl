@@ -128,9 +128,12 @@ NDArray NDArrayPool::alloc(std::vector<int64_t> shape, DLDataType dtype) {
         return NDArray::Empty(shape, dtype, DLContext{kDLCPU, 0});
       }
     }
+    // [new chunk] -- [front] -- [back]
+    // check        |<- this border
     // [back] -- [new chunk] -- [front]
-    // check                 |<- this border
-    if (chunks.back().offset <= chunks.front().offset && offset + length > chunks.front().offset) {
+    // check                  |<- this border
+    if (offset <= chunks.front().offset &&
+        offset + length > chunks.front().offset) {
       dump_chunks();
       LOG(INFO)
         << "NDArrayPool::alloc() failed with"
