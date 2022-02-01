@@ -27,6 +27,9 @@
 namespace dgl {
 namespace distributedv2 {
 
+#define DGL_FG_THREAD_AFFINITY "DGL_FG_THREAD_AFFINITY"
+#define DGL_BG_THREAD_AFFINITY "DGL_BG_THREAD_AFFINITY"
+
 class Service {
 public:
   virtual unsigned progress(Communicator *comm) = 0;
@@ -74,8 +77,7 @@ class ServiceManager {
   // for debugging
   size_t progress_counter = 0;
   size_t act_counter = 0;
-  static constexpr size_t COUNTER_THRESHOLD = 100000000;
-  static constexpr size_t YIELD_THRESHOLD = 100000;
+  static constexpr size_t YIELD_THRESHOLD = (1<<16);
 public:
   ServiceManager(int rank, int size, Communicator *comm);
   void add_stub_service(std::unique_ptr<StubService> &&serv);

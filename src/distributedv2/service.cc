@@ -2,6 +2,8 @@
 
 #include <memory>
 #include <thread>
+#include <cstdlib>
+#include <sstream>
 
 namespace dgl {
 namespace distributedv2 {
@@ -17,6 +19,37 @@ ServiceManager::ServiceManager(int rank, int size, Communicator *comm)
 #ifdef DGL_USE_NVTX
   nvtxNameOsThread(syscall(SYS_gettid), "Main Thread");
 #endif // DGL_USE_NVTX
+#if defined(__linux__)
+  const char* affinity = std::getenv(DGL_FG_THREAD_AFFINITY);
+  if (affinity != NULL) {
+    cpu_set_t cpuset;
+    pthread_t current_thread = pthread_self();
+    if (pthread_getaffinity_np(current_thread, sizeof(cpu_set_t), &cpuset) != 0) {
+      LOG(FATAL) << "sched_getaffinity failed";
+    }
+    std::vector<int> cpus;
+    for (int j = 0; j < CPU_SETSIZE; j++) {
+      if (CPU_ISSET(j, &cpuset)) {
+        cpus.push_back(j);
+      }
+    }
+    std::stringstream ss(affinity);
+    for (int j; ss >> j;) {
+      if (ss.peek() == ',') {
+        ss.ignore();
+      }
+      if (std::find(cpus.begin(), cpus.end(), j) != cpus.end()) {
+        LOG(INFO)
+          << "ServiceManager::ServiceManager"
+          << " rank= " << rank
+          << " core= " << j;
+        CPU_ZERO(&cpuset);
+        CPU_SET(j, &cpuset);
+        break;
+      }
+    }
+  }
+#endif
 }
 
 void ServiceManager::am_recv_cb(void *arg, const void *buffer, size_t length) {
@@ -69,14 +102,9 @@ void ServiceManager::progress() {
   }
   act_counter += comm->progress();
   progress_counter++;
-  if (progress_counter % COUNTER_THRESHOLD == 0) {
-    LOG(INFO) << "rank=" << rank << " ServiceManager::progress()";
-  }
-  if (progress_counter % YIELD_THRESHOLD == 0) {
-    if (act_counter == 0) {
-      std::this_thread::yield();
-    }
-    act_counter = 0;
+  if (progress_counter == YIELD_THRESHOLD) {
+    std::this_thread::yield();
+    progress_counter = 0;
   }
 }
 
@@ -84,6 +112,43 @@ void ServiceManager::run(ServiceManager *self) {
 #ifdef DGL_USE_NVTX
   nvtxNameOsThread(syscall(SYS_gettid), "UCX Thread");
 #endif // DGL_USE_NVTX
+  const char* affinity = std::getenv(DGL_BG_THREAD_AFFINITY);
+  if (affinity != NULL) {
+#if defined(__linux__)
+    cpu_set_t cpuset;
+    pthread_t current_thread = pthread_self();
+    if (pthread_getaffinity_np(current_thread, sizeof(cpu_set_t), &cpuset) != 0) {
+      LOG(FATAL) << "sched_getaffinity failed";
+    }
+    std::vector<int> cpus;
+    for (int j = 0; j < CPU_SETSIZE; j++) {
+      if (CPU_ISSET(j, &cpuset)) {
+        cpus.push_back(j);
+      }
+    }
+    std::stringstream ss(affinity);
+    for (int j; ss >> j;) {
+      if (ss.peek() == ',') {
+        ss.ignore();
+      }
+      if (std::find(cpus.begin(), cpus.end(), j) != cpus.end()) {
+        LOG(INFO)
+          << "ServiceManager::run()"
+          << " rank= " << self->rank
+          << " core= " << j;
+        CPU_ZERO(&cpuset);
+        CPU_SET(j, &cpuset);
+        break;
+      }
+    }
+    sched_param param = {
+      .sched_priority = 0,
+    };
+    if (sched_setscheduler(0, SCHED_IDLE, &param)) {
+      LOG(FATAL) << "sched_setscheduler failed";
+    }
+#endif
+  }
   while (!self->shutdown) {
     self->progress();
   }
